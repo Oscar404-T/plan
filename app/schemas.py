@@ -12,5 +12,5 @@ class UserRead(BaseModel):
     email: EmailStr
     name: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    # pydantic v2: use `from_attributes` in model_config instead of orm_mode
+    model_config = {"from_attributes": True}

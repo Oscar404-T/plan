@@ -2,6 +2,9 @@ fastapi
 uvicorn[standard]
 SQLAlchemy>=1.4
 pymysql
+cryptography
 python-dotenv
-pydantic
+pydantic[email]
+email-validator
+pydantic-settings
 alembic
