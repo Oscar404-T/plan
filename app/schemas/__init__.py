@@ -78,10 +78,8 @@ class OrderRead(BaseModel):
     estimated_yield: Optional[float] = None
     quantity: int
     due_datetime: datetime
-    # 返回创建时指定或系统默认的工序列表
-    operations: Optional[List[OrderOperationCreate]] = None
 
-    model_config = {"from_attributes": True"}
+    model_config = {"from_attributes": True}
 
 
 class HourAllocation(BaseModel):

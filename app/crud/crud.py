@@ -6,7 +6,8 @@
 """
 
 from sqlalchemy.orm import Session
-from . import models, schemas
+from .. import models, schemas
+from ..security import get_password_hash, verify_password
 from datetime import datetime
 import math
 
@@ -67,9 +68,6 @@ def list_operations(db: Session):
 
 
 # Admin helpers
-from .security import get_password_hash, verify_password
-
-
 def create_admin(db: Session, username: str, password: str, name: str = None):
     """创建管理员账户"""
     hashed = get_password_hash(password)

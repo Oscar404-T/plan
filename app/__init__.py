@@ -1,3 +1,1 @@
-from .main import app
-
-__all__ = ["app"]
+"""应用主模块初始化"""
