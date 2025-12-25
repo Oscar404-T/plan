@@ -1,2 +1,15 @@
+.env
+.env.local
 .env.example
-/app/__PYTHON__ENV__ --- IGNORE ---
+dev.db
+*.sqlite3
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/
+.DS_Store

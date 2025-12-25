@@ -8,3 +8,6 @@ pydantic[email]
 email-validator
 pydantic-settings
 alembic
+jinja2
+passlib[bcrypt]
+itsdangerous

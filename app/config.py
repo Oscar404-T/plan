@@ -26,6 +26,7 @@ class Settings(_BaseSettings):
     mysql_host: Optional[str] = None
     mysql_port: Optional[int] = None
     mysql_db: Optional[str] = None
+    secret_key: Optional[str] = None
 
     if _SettingsConfig is not None:
         model_config = _SettingsConfig(env_file=".env", env_file_encoding="utf-8")

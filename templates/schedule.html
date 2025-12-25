@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Schedule for Order {{ order.id }}</title>
+    <style>
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    </style>
+  </head>
+  <body>
+    <h1>Schedule for Order {{ order.id }}</h1>
+    <p>
+      Model: {{ order.internal_model if order.internal_model else '—' }} &middot;
+      Size (in): {% if order.size %}{{ '%.2f'|format(order.size) }}{% else %}—{% endif %} &middot;
+      Yield: {% if order.estimated_yield is not none %}{{ order.estimated_yield }}%{% else %}—{% endif %}
+    </p>
+    <p>Quantity: {{ order.quantity }} &middot; Due: {{ order.due_datetime }}</p>
+    <p><a href="/schedule/{{ order.id }}/csv">Download CSV</a> {% if is_admin %} - <a href="/ui/logout">Logout</a> {% endif %}</p>
+
+    {% if allocations %}
+    <table>
+      <thead>
+        <tr><th>Start</th><th>End</th><th>Shift</th><th>Operation</th><th>Allocated</th></tr>
+      </thead>
+      <tbody>
+        {% for a in allocations %}
+        <tr>
+          <td>{{ a.start }}</td>
+          <td>{{ a.end }}</td>
+          <td>{{ a.shift }}</td>
+          <td>{{ a.operation }}</td>
+          <td>{{ a.allocated }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>No allocations (order may be unschedulable).</p>
+    {% endif %}
+  </body>
+</html>
