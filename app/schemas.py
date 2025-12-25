@@ -92,6 +92,12 @@ class HourAllocation(BaseModel):
 
 class ScheduleResponse(BaseModel):
     order_id: int
+    requested_quantity: int
+    estimated_yield: Optional[float] = None
+    required_input: int
     total_allocated: int
     allocations: List[HourAllocation]
     note: Optional[str] = None
+    meets_due: bool
+    expected_completion: Optional[datetime] = None
+    meets_due_estimate: Optional[bool] = None

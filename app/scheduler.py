@@ -96,57 +96,71 @@ def allocate_backward(start: datetime, end: datetime, qty: int, capacity_lookup_
 
 # Per-operation sequential scheduler
 def schedule_order_operations(start: datetime, due: datetime, length: float, width: float, qty: int, operations: list, capacity_lookup_per_op) -> dict:
-    """Schedule qty through a sequence of operations.
+    """Schedule qty through a sequence of operations using a pipelined, per-piece simulation.
 
-    operations: list of {'name': str}
-    capacity_lookup_per_op(op_name, hour_dt) -> int
-
-    策略说明（已中文注释）：
-      - 从最后一道工序开始，向截止时间回溯分配；
-      - 前一道工序的可用截止时间为后一工序最早分配开始时间；
-      - 若某道工序无法在截止前分配完全部数量，则在返回结果的 note 字段标注为 "under-capacity"。
+    说明：
+      - 模拟从 start 到 due 的每小时生产，按工序顺序处理；
+      - 第一道工序从可用投入（qty）开始处理，处理完成的件在小时结束时可用于下一道工序；
+      - 每小时每道工序的产能由 capacity_lookup_per_op(op_name, hour_dt) 提供（支持 per-order 覆盖）；
+      - 如果截止前最后一道工序无法完成所有数量，则返回 note 表示 under-capacity。
 
     返回：联合分配清单，元素为 (hour_start, hour_end, shift, operation_name, allocated)
     """
-    op_allocations = {}
-    op_deadline = due
-    overall_allocated = True
-    note = None
+    # Prepare data structures
+    op_names = [op.get("name") for op in operations]
+    processed = {name: 0 for name in op_names}  # 已由该工序处理完成（累加）
+    # finished_by_time[op_name] = {finish_time_datetime: count}
+    finished_by_time: dict = {name: {} for name in op_names}
+    allocations_map: dict = {name: [] for name in op_names}
 
-    # Iterate operations backwards
-    for op in reversed(operations):
-        name = op.get("name")
-        # capacity_lookup for this op: wrapper
-        def cap_lookup_for_hour(dt, op_name=name):
-            return capacity_lookup_per_op(op_name, dt)
+    cursor = start.replace(minute=0, second=0, microsecond=0)
 
-        allocated, allocs = allocate_backward(start, op_deadline, qty, cap_lookup_for_hour)
-        op_allocations[name] = allocs
-        if allocated < qty:
-            overall_allocated = False
-            note = f"Operation '{name}' under-capacity: requested {qty}, allocated {allocated}."
-        # next op's deadline becomes earliest start of this op's allocations
-        if allocs:
-            earliest = allocs[0][0]
-            op_deadline = earliest
-        else:
-            # no allocation at all; set deadline to start to prevent prior allocation
-            op_deadline = start
+    # simulate hour by hour forward until due
+    while cursor < due:
+        any_progress = False
+        for idx, name in enumerate(op_names):
+            cap = capacity_lookup_per_op(name, cursor)
+            if idx == 0:
+                # first op can process from remaining input
+                available = qty - processed[name]
+            else:
+                prev = op_names[idx - 1]
+                # compute how many of prev have finished by cursor (i.e., finished at or before cursor)
+                finished_total_up_to_cursor = sum(count for t, count in finished_by_time[prev].items() if t <= cursor)
+                available = max(0, finished_total_up_to_cursor - processed[name])
 
-    # Flatten allocations into a list with operation name
+            alloc = min(cap, available)
+            if alloc > 0:
+                hour_end = cursor + timedelta(hours=1)
+                shift = get_shift_for_hour(cursor)
+                allocations_map[name].append((cursor, hour_end, shift, alloc))
+
+                processed[name] += alloc
+                finish_time = cursor + timedelta(hours=1)
+                finished_by_time[name].setdefault(finish_time, 0)
+                finished_by_time[name][finish_time] += alloc
+                any_progress = True
+        # advance time
+        # If no progress was possible this hour, we still advance cursor to next hour (maybe future capacity is available)
+        cursor = cursor + timedelta(hours=1)
+
+    # Flatten allocations into chronological list
     flat = []
-    for op in operations:
-        name = op.get("name")
-        allocs = op_allocations.get(name, [])
-        for (s, e, shift, alloc) in allocs:
+    for name in op_names:
+        for (s, e, shift, alloc) in allocations_map.get(name, []):
             flat.append((s, e, shift, name, alloc))
+    # sort flat by start time to be deterministic
+    flat.sort(key=lambda x: (x[0], x[3]))
 
     # total allocated on last operation
-    last_op_name = operations[-1]["name"] if operations else None
-    last_allocs = op_allocations.get(last_op_name, []) if last_op_name else []
-    allocated_on_last = sum(a[3] for a in last_allocs)
+    last_op_name = op_names[-1] if op_names else None
+    allocated_on_last = processed[last_op_name] if last_op_name else 0
 
-    return {"total_allocated": allocated_on_last, "allocations": flat, "note": note if not overall_allocated else None}
+    note = None
+    if allocated_on_last < qty:
+        note = f"Operation '{last_op_name}' under-capacity: requested {qty}, allocated {allocated_on_last}."
+
+    return {"total_allocated": allocated_on_last, "allocations": flat, "note": note}
 
 
 # Backwards-compatible simple scheduler for single-operation tests

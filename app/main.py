@@ -157,17 +157,48 @@ def schedule_endpoint(order: schemas.OrderCreate, db: Session = Depends(get_db))
     start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     due = order.due_datetime
 
-    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, order.length, order.width, order.quantity, ops_info, capacity_lookup_per_op)
+    # 计算投入量（考虑估计良率：投入量 = 出货数量 / (估计良率/100)）
+    import math
+    if order.estimated_yield and order.estimated_yield > 0:
+        required_input = int(math.ceil(order.quantity / (order.estimated_yield / 100.0)))
+    else:
+        required_input = order.quantity
+
+    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, order.length, order.width, required_input, ops_info, capacity_lookup_per_op)
 
     allocations = []
     for (s, e, shift, op_name, alloc) in sched["allocations"]:
         allocations.append({"start": s, "end": e, "shift": shift.value if hasattr(shift, "value") else str(shift), "operation": op_name, "allocated": alloc})
 
+    # compute deadline-related flags similar to UI
+    total_allocated = sched.get("total_allocated", 0)
+    meets_due = total_allocated >= required_input
+    expected_completion = None
+    meets_due_estimate = meets_due
+    if not meets_due:
+        remaining_qty = required_input - total_allocated
+        last_op_name = ops_info[-1]["name"] if ops_info else None
+        last_op_pph = next((o.get('pieces_per_hour') for o in ops_info if o.get('name') == last_op_name), None)
+        last_op_ends = [a[1] for a in sched['allocations'] if a[3] == last_op_name]
+        last_alloc_end = max(last_op_ends) if last_op_ends else None
+        if last_op_pph and last_op_pph > 0:
+            import math
+            hours_needed = int(math.ceil(remaining_qty / last_op_pph))
+            base = last_alloc_end if last_alloc_end else start
+            expected_completion = base + timedelta(hours=hours_needed)
+            meets_due_estimate = expected_completion <= due
+
     return {
         "order_id": db_order.id,
+        "requested_quantity": order.quantity,
+        "estimated_yield": order.estimated_yield,
+        "required_input": required_input,
         "total_allocated": sched["total_allocated"],
         "allocations": allocations,
         "note": sched["note"],
+        "meets_due": meets_due,
+        "expected_completion": expected_completion,
+        "meets_due_estimate": meets_due_estimate,
     }
 
 
@@ -219,7 +250,13 @@ def schedule_csv(order_id: str, db: Session = Depends(get_db)):
     start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     due = db_order.due_datetime
 
-    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, db_order.length, db_order.width, db_order.quantity, ops_info, capacity_lookup_per_op)
+    # 计算投入量（考虑估计良率：投入量 = 出货数量 / (估计良率/100)）
+    import math
+    req_qty = db_order.quantity
+    if db_order.estimated_yield and db_order.estimated_yield > 0:
+        req_qty = int(math.ceil(db_order.quantity / (db_order.estimated_yield / 100.0)))
+
+    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, db_order.length, db_order.width, req_qty, ops_info, capacity_lookup_per_op)
 
     # Build CSV
     lines = ["start,end,shift,operation,allocated"]
@@ -409,7 +446,13 @@ def ui_order(order_id: str, request: Request, db: Session = Depends(get_db)):
         cap = crud.get_capacity_by_shift(db, shift.value if hasattr(shift, "value") else shift)
         return cap.pieces_per_hour if cap else 0
 
-    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, db_order.length, db_order.width, db_order.quantity, ops_info, capacity_lookup_per_op)
+    # 计算投入量并用于调度
+    import math
+    req_qty = db_order.quantity
+    if db_order.estimated_yield and db_order.estimated_yield > 0:
+        req_qty = int(math.ceil(db_order.quantity / (db_order.estimated_yield / 100.0)))
+
+    sched = __import__("app.scheduler", fromlist=["schedule_order_operations"]).schedule_order_operations(start, due, db_order.length, db_order.width, req_qty, ops_info, capacity_lookup_per_op)
 
     allocations = []
     for (s, e, shift, op_name, alloc) in sched["allocations"]:
@@ -417,4 +460,34 @@ def ui_order(order_id: str, request: Request, db: Session = Depends(get_db)):
 
     is_admin = app_auth.is_admin(request)
 
-    return templates.TemplateResponse("schedule.html", {"request": request, "order": db_order, "allocations": allocations, "is_admin": is_admin})
+    # Summary stats for UI
+    total_allocated = sched.get("total_allocated", 0)
+    required_input_val = req_qty
+    try:
+        allocated_pct = round((total_allocated / required_input_val) * 100, 2) if required_input_val > 0 else 0.0
+    except Exception:
+        allocated_pct = 0.0
+    remaining = max(0, required_input_val - total_allocated)
+
+    # Determine last operation name (used to compute completion times)
+    last_op_name = ops_info[-1]["name"] if ops_info else None
+    # find latest end time allocated for last operation
+    last_op_ends = [a['end'] for a in allocations if a['operation'] == last_op_name]
+    last_alloc_end = max(last_op_ends) if last_op_ends else None
+
+    # Estimate completion if under-allocated: estimate additional hours using per-op pph if available
+    expected_completion = None
+    meets_due = total_allocated >= required_input_val
+    meets_due_estimate = meets_due
+    if not meets_due:
+        remaining_qty = required_input_val - total_allocated
+        # per-op pieces per hour preference
+        last_op_pph = next((o.get('pieces_per_hour') for o in ops_info if o.get('name') == last_op_name), None)
+        if last_op_pph and last_op_pph > 0:
+            import math
+            hours_needed = int(math.ceil(remaining_qty / last_op_pph))
+            base = last_alloc_end if last_alloc_end else start
+            expected_completion = base + timedelta(hours=hours_needed)
+            meets_due_estimate = expected_completion <= due
+
+    return templates.TemplateResponse("schedule.html", {"request": request, "order": db_order, "allocations": allocations, "is_admin": is_admin, "required_input": req_qty, "total_allocated": total_allocated, "allocated_pct": allocated_pct, "remaining": remaining, "meets_due": meets_due, "expected_completion": expected_completion, "meets_due_estimate": meets_due_estimate})

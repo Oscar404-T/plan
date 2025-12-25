@@ -7,11 +7,32 @@
       <div class="card-body">
         <h3 class="card-title">订单 {{ order.id }} 的排产结果</h3>
         <p class="mb-1">型号：{{ order.internal_model if order.internal_model else '—' }} · 尺寸（英寸）：{% if order.size %}{{ '%.2f'|format(order.size) }}{% else %}—{% endif %} · 良率：{% if order.estimated_yield is not none %}{{ order.estimated_yield }}%{% else %}—{% endif %}</p>
-        <p>数量：{{ order.quantity }} · 截止：{{ order.due_datetime }}</p>
+        <p>出货数量：{{ order.quantity }} · 投入量：{{ required_input if required_input is defined else order.quantity }} · 截止：{{ order.due_datetime }}</p>
         <p>
           <a class="btn btn-outline-primary btn-sm" href="/schedule/{{ order.id }}/csv">下载 CSV</a>
           {% if is_admin %} <a class="btn btn-outline-secondary btn-sm ms-2" href="/ui/logout">登出</a> {% endif %}
         </p>
+      </div>
+    </div>
+
+    <!-- Summary card -->
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <div class="card border-start border-4 border-primary shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">排产统计</h5>
+            <p class="mb-1">出货数量：<strong>{{ order.quantity }}</strong></p>
+            <p class="mb-1">投入量（估计良率）：<strong>{{ required_input if required_input is defined else order.quantity }}</strong>{% if order.estimated_yield is not none %}（良率 {{ order.estimated_yield }}%）{% endif %}</p>
+            <p class="mb-1">已分配：<strong>{{ total_allocated if total_allocated is defined else 0 }}</strong> {% if meets_due %}<span class="badge bg-success ms-2">满足截止</span>{% else %}<span class="badge bg-danger ms-2">未满足截止</span>{% endif %}</p>
+            <p class="mb-1">剩余需分配：<strong>{{ remaining if remaining is defined else 0 }}</strong></p>
+            {% if expected_completion %}
+            <p class="mb-1">预计完成：<strong>{{ expected_completion }}</strong> {% if meets_due_estimate is not none %}{% if meets_due_estimate %}<span class="badge bg-success ms-2">预计满足截止</span>{% else %}<span class="badge bg-warning ms-2">预计超期</span>{% endif %}{% endif %}</p>
+            {% endif %}
+            <div class="progress mt-2" style="height:18px">
+              <div class="progress-bar" role="progressbar" style="width: {{ allocated_pct if allocated_pct is defined else 0 }}%;" aria-valuenow="{{ allocated_pct if allocated_pct is defined else 0 }}" aria-valuemin="0" aria-valuemax="100">{{ allocated_pct if allocated_pct is defined else 0 }}%</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
