@@ -32,7 +32,7 @@ def setup_db():
 def test_login_page_renders():
     r = client.get('/ui/login')
     assert r.status_code == 200
-    assert 'Admin Login' in r.text
+    assert '管理员登录' in r.text
 
 
 @pytest.mark.skipif(not app_auth.SESSIONS_AVAILABLE, reason="sessions not available in this environment")
@@ -48,7 +48,7 @@ def test_login_success_and_redirects_and_sets_cookie():
     r = client.post('/ui/login', data={'username': '0210042432', 'password': 'Cao99063010'})
     # TestClient follows redirects by default; after successful login we should end up at the order creation page
     assert r.status_code == 200
-    assert 'Create Order' in r.text
+    assert '创建订单' in r.text
     # session cookie should be present in the client's cookie jar
     assert 'session' in client.cookies
 
@@ -61,7 +61,7 @@ def test_protected_page_requires_login_then_allows_after_login():
     # without login should render login page (redirect followed)
     r = client.get('/ui/orders/create')
     assert r.status_code == 200
-    assert 'Admin Login' in r.text
+    assert '管理员登录' in r.text
 
     # login
     client.post('/ui/login', data={'username': '0210042432', 'password': 'Cao99063010'})
@@ -69,7 +69,7 @@ def test_protected_page_requires_login_then_allows_after_login():
     # now should be allowed
     r2 = client.get('/ui/orders/create')
     assert r2.status_code == 200
-    assert 'Create Order' in r2.text
+    assert '创建订单' in r2.text
 
 
 @pytest.mark.skipif(not app_auth.SESSIONS_AVAILABLE, reason="sessions not available in this environment")
@@ -83,9 +83,9 @@ def test_logout_clears_session_and_redirects():
     # logout (TestClient follows redirect to login page)
     r2 = client.get('/ui/logout')
     assert r2.status_code == 200
-    assert 'Admin Login' in r2.text
+    assert '管理员登录' in r2.text
 
     # after logout, accessing protected page returns login page again
     r3 = client.get('/ui/orders/create')
     assert r3.status_code == 200
-    assert 'Admin Login' in r3.text
+    assert '管理员登录' in r3.text

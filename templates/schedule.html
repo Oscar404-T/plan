@@ -1,42 +1,44 @@
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Schedule for Order {{ order.id }}</title>
-    <style>
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    </style>
-  </head>
-  <body>
-    <h1>Schedule for Order {{ order.id }}</h1>
-    <p>
-      Model: {{ order.internal_model if order.internal_model else '—' }} &middot;
-      Size (in): {% if order.size %}{{ '%.2f'|format(order.size) }}{% else %}—{% endif %} &middot;
-      Yield: {% if order.estimated_yield is not none %}{{ order.estimated_yield }}%{% else %}—{% endif %}
-    </p>
-    <p>Quantity: {{ order.quantity }} &middot; Due: {{ order.due_datetime }}</p>
-    <p><a href="/schedule/{{ order.id }}/csv">Download CSV</a> {% if is_admin %} - <a href="/ui/logout">Logout</a> {% endif %}</p>
+{% extends 'base.html' %}
+{% block title %}订单 {{ order.id }} 的排产结果 — Plan 排产系统{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h3 class="card-title">订单 {{ order.id }} 的排产结果</h3>
+        <p class="mb-1">型号：{{ order.internal_model if order.internal_model else '—' }} · 尺寸（英寸）：{% if order.size %}{{ '%.2f'|format(order.size) }}{% else %}—{% endif %} · 良率：{% if order.estimated_yield is not none %}{{ order.estimated_yield }}%{% else %}—{% endif %}</p>
+        <p>数量：{{ order.quantity }} · 截止：{{ order.due_datetime }}</p>
+        <p>
+          <a class="btn btn-outline-primary btn-sm" href="/schedule/{{ order.id }}/csv">下载 CSV</a>
+          {% if is_admin %} <a class="btn btn-outline-secondary btn-sm ms-2" href="/ui/logout">登出</a> {% endif %}
+        </p>
+      </div>
+    </div>
 
     {% if allocations %}
-    <table>
-      <thead>
-        <tr><th>Start</th><th>End</th><th>Shift</th><th>Operation</th><th>Allocated</th></tr>
-      </thead>
-      <tbody>
-        {% for a in allocations %}
-        <tr>
-          <td>{{ a.start }}</td>
-          <td>{{ a.end }}</td>
-          <td>{{ a.shift }}</td>
-          <td>{{ a.operation }}</td>
-          <td>{{ a.allocated }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card shadow-sm">
+      <div class="table-responsive">
+        <table class="table table-striped mb-0">
+          <thead>
+            <tr><th>开始</th><th>结束</th><th>班次</th><th>工序</th><th>已分配</th></tr>
+          </thead>
+          <tbody>
+            {% for a in allocations %}
+            <tr>
+              <td>{{ a.start }}</td>
+              <td>{{ a.end }}</td>
+              <td>{{ a.shift }}</td>
+              <td>{{ a.operation }}</td>
+              <td>{{ a.allocated }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
     {% else %}
-    <p>No allocations (order may be unschedulable).</p>
+    <div class="alert alert-warning">当前未分配任何时段（可能超出产能或时间窗口）。</div>
     {% endif %}
-  </body>
-</html>
+  </div>
+</div>
+{% endblock %}
