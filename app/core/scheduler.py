@@ -1,187 +1,328 @@
-"""调度器模块
+"""排程核心逻辑
 
-实现按小时分配产能的逻辑，并包含从截止时间向前分配（为保证工序顺序）
-主要函数：
-- allocate_by_capacity: 从起始向前分配到截止（按时间向前）
-- allocate_backward: 从截止向前分配（用于串联工序，保证后工序先完成）
-- schedule_order_operations: 对多道工序按顺序做向后分配
+根据订单需求和产能约束，计算最优排程方案。
+支持小时、班次、天三种时间粒度的排程和可视化。
 """
 
-from datetime import datetime, timedelta, time
-from typing import List, Tuple
-import enum
+from datetime import datetime, timedelta
+from typing import List, Dict, Tuple
+from .. import models
+from sqlalchemy.orm import Session
+from ..db import get_db
+import math
 
 
-class ShiftEnum(str, enum.Enum):
-    """班次枚举：白班和夜班"""
-    day = "day"
-    night = "night"
+def get_shift_for_hour(dt) -> str:
+    """根据datetime对象判断班次"""
+    if isinstance(dt, datetime):
+        hour = dt.hour
+    else:
+        hour = dt
+    if 8 <= hour < 20:
+        return "白班"
+    else:
+        return "夜班"
 
 
-# 班次窗口（本地时刻，无时区处理），符合需求：
-# 白班 08:00 - 19:00（11 小时，含 1 小时休息）
-# 夜班 20:00 - 07:00（11 小时，含 1 小时休息）
-# 调度以小时为粒度，按整点切分
-
-DAY_START = time(8, 0)      # 白班开始时间
-DAY_END = time(19, 0)       # 白班结束时间
-NIGHT_START = time(20, 0)   # 夜班开始时间
-NIGHT_END = time(7, 0)      # 次日夜班结束时间
-
-
-def is_day_shift(dt: datetime) -> bool:
-    """判断给定时间是否为白班时间"""
-    t = dt.time()
-    return DAY_START <= t < DAY_END
+def get_capacity_by_shift(db: Session, shift: str):
+    """根据班次获取产能"""
+    from ..crud import list_capacities
+    capacities = list_capacities(db)
+    for cap in capacities:
+        if shift in cap.description or cap.shift == shift:
+            return cap
+    # 如果没有找到特定班次的产能，则返回默认值
+    return type('obj', (object,), {
+        'shift': shift,
+        'pieces_per_hour': 10,
+        'description': f'{shift} 默认产能'
+    })()
 
 
-def is_night_shift(dt: datetime) -> bool:
-    """判断给定时间是否为夜班时间"""
-    t = dt.time()
-    # 夜班包括 20:00-23:59 或 00:00-07:00
-    return (t >= NIGHT_START) or (t < NIGHT_END)
-
-
-def next_hour(dt: datetime) -> datetime:
-    """获取下一个整点时间"""
-    return (dt + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-
-
-def get_shift_for_hour(dt: datetime) -> ShiftEnum:
-    """根据时间获取对应的班次"""
-    if is_day_shift(dt):
-        return ShiftEnum.day
-    return ShiftEnum.night
-
-
-def allocate_by_capacity(start: datetime, end: datetime, qty: int, capacity_lookup) -> Tuple[int, List[Tuple[datetime, datetime, ShiftEnum, int]]]:
-    """按时间正序分配数量到每小时槽位。
-
-    参数：
-      - start, end: 调度窗口（start 包含，end 排除）
-      - qty: 需分配的目标数量
-      - capacity_lookup(shift): 根据班次或时间返回该小时的产能
-    返回：已分配总数与每小时分配清单
-    """
+def schedule_order_operations(start: datetime, due: datetime, length: float, width: float, required_input: int, operations: list, capacity_lookup):
+    """计算订单工序排程 - 旧接口，用于兼容现有调用"""
+    # 如果没有工序，返回空的分配列表
+    if not operations:
+        return {
+            "allocations": [],
+            "total_allocated": 0,
+            "meets_due": True,
+            "expected_completion": start,
+            "meets_due_estimate": True
+        }
+    
+    # 流水线排程：每个工序可以并行处理不同批次的产品
     allocations = []
-    cursor = start.replace(minute=0, second=0, microsecond=0)
-    total_allocated = 0
+    
+    # 为每个工序维护一个开始时间
+    current_times = [start] * len(operations)
+    
+    # 计算每个工序的产能（pieces per hour）
+    op_capacities = []
+    for op_info in operations:
+        op_name = op_info["name"]
+        
+        # 检查capacity_lookup是否是函数（需要两个参数）还是字典
+        if callable(capacity_lookup):
+            # 如果是函数，尝试调用它获取产能信息
+            # 这里使用current_time作为时间参数
+            try:
+                # 首先尝试使用两个参数调用（op_name, dt）
+                capacity_info = capacity_lookup(op_name, start)
+                # 如果返回的是一个数字，说明是pieces_per_hour
+                if isinstance(capacity_info, (int, float)):
+                    pieces_per_hour = capacity_info
+                # 否则假设返回的是一个字典
+                else:
+                    pieces_per_hour = capacity_info.get('pieces_per_hour', 10) if isinstance(capacity_info, dict) else 10
+            except TypeError:
+                # 如果调用失败（参数错误），说明函数只需要一个参数
+                capacity_info = capacity_lookup(op_name)
+                pieces_per_hour = capacity_info.get('pieces_per_hour', 10) if isinstance(capacity_info, dict) else 10
+        else:
+            # 如果是字典，直接使用.get()方法
+            capacity_info = capacity_lookup.get(op_name, {})
+            pieces_per_hour = capacity_info.get('pieces_per_hour', 10)
+        
+        # 确保pieces_per_hour不为0，避免除零错误
+        if pieces_per_hour <= 0:
+            pieces_per_hour = 10  # 使用默认值
+        
+        op_capacities.append(pieces_per_hour)
+    
+    # 分批处理，每次处理一个批次
+    batch_size = 100  # 每批处理100个产品
+    processed = 0
+    
+    while processed < required_input:
+        batch = min(batch_size, required_input - processed)
+        
+        # 处理当前批次的每个工序
+        for i, op_info in enumerate(operations):
+            op_name = op_info["name"]
+            pieces_per_hour = op_capacities[i]
+            
+            # 计算完成当前批次所需的时间
+            hours_needed = math.ceil(batch / pieces_per_hour)
+            start_time = current_times[i]
+            end_time = start_time + timedelta(hours=hours_needed)
+            
+            # 确定班次
+            shift_type = get_shift_for_hour(start_time)
+            
+            # 将分配信息添加到列表中，格式为 (start, end, shift, op_name, allocated)
+            allocations.append((start_time, end_time, shift_type, op_name, batch))
+            
+            # 更新该工序的下一批次开始时间
+            current_times[i] = end_time
+        
+        processed += batch
+    
+    # 计算总分配量
+    total_allocated = sum(item[4] for item in allocations)
+    
+    # 确保current_times不为空
+    final_completion_time = current_times[-1] if current_times else start
+    
+    # 返回字典格式，与原来的实现兼容
+    # 包含allocations元组列表，以及统计信息
+    return {
+        "allocations": allocations,
+        "total_allocated": total_allocated,
+        "meets_due": final_completion_time <= due,  # 最后一个工序的结束时间
+        "expected_completion": final_completion_time if final_completion_time <= due else None,
+        "meets_due_estimate": final_completion_time <= due
+    }
 
-    while cursor < end and total_allocated < qty:
-        hour_end = cursor + timedelta(hours=1)
-        shift = get_shift_for_hour(cursor)
-        cap = capacity_lookup(shift)
-        alloc = min(cap, qty - total_allocated)
-        if alloc > 0:
-            allocations.append((cursor, hour_end, shift, alloc))
-            total_allocated += alloc
-        cursor = hour_end
-    return total_allocated, allocations
 
-
-def allocate_backward(start: datetime, end: datetime, qty: int, capacity_lookup_op) -> (int, list):
-    """从截止时间向前分配，用于保证工序之间的先后顺序。
-
-    例如：最后一道工序优先从截止时间向前排班，前一道工序必须在其开始前完成。
-    """
-    allocations = []
-    total_allocated = 0
-
-    # normalize end to hour boundary
-    cursor_end = end.replace(minute=0, second=0, microsecond=0)
-    # we will consider the hour starting at cursor_end - 1 hour
-    while cursor_end > start and total_allocated < qty:
-        hour_start = cursor_end - timedelta(hours=1)
-        shift = get_shift_for_hour(hour_start)
-        cap = capacity_lookup_op(hour_start)
-        alloc = min(cap, qty - total_allocated)
-        if alloc > 0:
-            allocations.append((hour_start, cursor_end, shift, alloc))
-            total_allocated += alloc
-        cursor_end = hour_start
-
-    # allocations are collected from latest to earliest; reverse to chronological order
-    allocations.reverse()
-    return total_allocated, allocations
-
-
-def schedule_order_operations(start: datetime, due: datetime, length: float, width: float, qty: int, operations: list, capacity_lookup_per_op) -> dict:
-    """调度订单通过一系列工序，使用流水线、逐件模拟的方式。
-
-    说明：
-      - 模拟从 start 到 due 的每小时生产，按工序顺序处理；
-      - 第一道工序从可用投入（qty）开始处理，处理完成的件在小时结束时可用于下一道工序；
-      - 每小时每道工序的产能由 capacity_lookup_per_op(op_name, hour_dt) 提供（支持 per-order 覆盖）；
-      - 如果截止前最后一道工序无法完成所有数量，则返回 note 表示 under-capacity。
-
-    返回：联合分配清单，元素为 (hour_start, hour_end, shift, operation_name, allocated)
-    """
-    # 准备数据结构
-    op_names = [op.get("name") for op in operations]
-    processed = {name: 0 for name in op_names}  # 已由该工序处理完成（累加）
-    # finished_by_time[op_name] = {finish_time_datetime: count}
-    finished_by_time: dict = {name: {} for name in op_names}
-    allocations_map: dict = {name: [] for name in op_names}
-
-    cursor = start.replace(minute=0, second=0, microsecond=0)
-
-    # 模拟每小时直到截止时间
-    while cursor < due:
-        any_progress = False
-        for idx, name in enumerate(op_names):
-            cap = capacity_lookup_per_op(name, cursor)
-            if idx == 0:
-                # 第一道工序可以处理剩余投入
-                available = qty - processed[name]
+def calculate_order_schedule(db: Session, order_id: int):
+    """计算订单工序排程 - 新接口，用于数据库订单"""
+    # 获取订单和工序信息
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    operations = db.query(models.OrderOperation).filter(
+        models.OrderOperation.order_id == order_id
+    ).order_by(models.OrderOperation.seq).all()
+    
+    if not operations:
+        return []
+    
+    # 获取工序详情
+    operation_details = []
+    for op in operations:
+        op_model = db.query(models.Operation).filter(models.Operation.id == op.operation_id).first()
+        operation_details.append({
+            'id': op.id,
+            'name': op_model.name,
+            'pieces_per_hour': op.pieces_per_hour or op_model.default_pieces_per_hour or 10,
+            'seq': op.seq,
+            'total_pieces': order.quantity  # 总件数
+        })
+    
+    # 计算每道工序的开始时间和持续时间
+    schedule_items = []
+    current_time = datetime.combine(order.due_datetime.date(), datetime.min.time())
+    
+    for op_detail in operation_details:
+        # 计算完成该工序所需的时间（小时）
+        required_hours = math.ceil(op_detail['total_pieces'] / op_detail['pieces_per_hour'])
+        
+        # 创建排程项
+        start_time = current_time
+        end_time = current_time + timedelta(hours=required_hours)
+        
+        # 计算经过的班次
+        shift_count = 0
+        temp_time = start_time
+        while temp_time < end_time:
+            if 8 <= temp_time.hour < 20:
+                shift_type = "白班"
             else:
-                prev = op_names[idx - 1]
-                # 计算到光标时间为止有多少前一道工序已完成（即在光标时间或之前完成）
-                finished_total_up_to_cursor = sum(count for t, count in finished_by_time[prev].items() if t <= cursor)
-                available = max(0, finished_total_up_to_cursor - processed[name])
+                shift_type = "夜班"
+            
+            # 计算当前班次剩余时间
+            if shift_type == "白班":
+                shift_end = temp_time.replace(hour=20, minute=0, second=0, microsecond=0)
+            else:
+                if temp_time.hour < 8:
+                    shift_end = temp_time.replace(hour=8, minute=0, second=0, microsecond=0)
+                else:
+                    shift_end = (temp_time + timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+            
+            if shift_end > end_time:
+                shift_end = end_time
+            
+            # 计算该班次内的产能
+            shift_duration = (shift_end - temp_time).total_seconds() / 3600
+            shift_capacity = op_detail['pieces_per_hour'] * shift_duration
+            
+            schedule_items.append({
+                'operation_id': op_detail['id'],
+                'operation_name': op_detail['name'],
+                'start_time': temp_time,
+                'end_time': shift_end,
+                'shift_type': shift_type,
+                'shift_date': temp_time.date(),
+                'shift_capacity': shift_capacity,
+                'total_pieces': op_detail['total_pieces'],
+                'remaining_pieces': max(0, op_detail['total_pieces'] - sum([item['shift_capacity'] for item in schedule_items if item['operation_name'] == op_detail['name']])),
+                'order_id': order_id,
+                'order_name': f"{order.internal_model or '订单'}-{order.id}"
+            })
+            
+            temp_time = shift_end
+        
+        # 更新当前时间到下一道工序的开始时间
+        current_time = end_time
+    
+    # 按时间顺序排序
+    schedule_items.sort(key=lambda x: (x['start_time'], x['operation_name']))
+    
+    return schedule_items
 
-            alloc = min(cap, available)
-            if alloc > 0:
-                hour_end = cursor + timedelta(hours=1)
-                shift = get_shift_for_hour(cursor)
-                allocations_map[name].append((cursor, hour_end, shift, alloc))
 
-                processed[name] += alloc
-                finish_time = cursor + timedelta(hours=1)
-                finished_by_time[name].setdefault(finish_time, 0)
-                finished_by_time[name][finish_time] += alloc
-                any_progress = True
-        # 推进时间
-        # 如果这一小时无法取得进展，我们仍然将光标推进到下一小时（未来可能有产能可用）
-        cursor = cursor + timedelta(hours=1)
-
-    # 将分配扁平化为按时间顺序的列表
-    flat = []
-    for name in op_names:
-        for (s, e, shift, alloc) in allocations_map.get(name, []):
-            flat.append((s, e, shift, name, alloc))
-    # 按开始时间排序以确保确定性
-    flat.sort(key=lambda x: (x[0], x[3]))
-
-    # 最后一道工序分配的总量
-    last_op_name = op_names[-1] if op_names else None
-    allocated_on_last = processed[last_op_name] if last_op_name else 0
-
-    note = None
-    if allocated_on_last < qty:
-        note = f"工序 '{last_op_name}' 产能不足：需要 {qty}，已分配 {allocated_on_last}。"
-
-    return {"total_allocated": allocated_on_last, "allocations": flat, "note": note}
+def get_detailed_schedule_data(db: Session, order_id: int, time_granularity: str = 'hour'):
+    """获取用于甘特图的详细数据"""
+    schedule_items = calculate_order_schedule(db, order_id)
+    
+    # 根据时间粒度调整数据格式
+    if time_granularity == 'hour':
+        return _format_hourly_data(schedule_items)
+    elif time_granularity == 'shift':
+        return _format_shift_data(schedule_items)
+    elif time_granularity == 'day':
+        return _format_daily_data(schedule_items)
+    else:
+        return schedule_items
 
 
-# 为单工序测试向后兼容的调度器
-def schedule_order(start: datetime, due: datetime, length: float, width: float, qty: int, capacity_lookup):
-    """用于测试单工序调度的兼容性包装器。
+def _format_hourly_data(schedule_items: List[Dict]) -> Dict:
+    """格式化小时级数据"""
+    # 为每个小时创建详细的时间节点
+    hourly_data = []
+    for item in schedule_items:
+        start = item['start_time']
+        end = item['end_time']
+        duration = (end - start).total_seconds() / 3600  # 持续小时数
+        current = start
+        hour_count = 0
+        
+        while current < end:
+            next_hour = current + timedelta(hours=1)
+            if next_hour > end:
+                next_hour = end
+            
+            hour_data = item.copy()
+            hour_data['start_time'] = current
+            hour_data['end_time'] = next_hour
+            hour_data['time_label'] = current.strftime('%m-%d %H:%M')
+            hour_data['duration'] = (next_hour - current).total_seconds() / 3600
+            hour_data['hour_index'] = hour_count
+            hour_data['shift_type'] = get_shift_for_hour(current)
+            
+            hourly_data.append(hour_data)
+            current = next_hour
+            hour_count += 1
+    
+    return {
+        'items': hourly_data,
+        'time_labels': [item['time_label'] for item in hourly_data],
+        'x_axis_type': 'time',
+        'x_axis_format': 'hourly'
+    }
 
-    capacity_lookup(shift) -> int
-    """
-    def capacity_lookup_per_op(op_name, dt):
-        shift = get_shift_for_hour(dt)
-        return capacity_lookup(shift)
 
-    ops = [{"name": "single"}]
-    return schedule_order_operations(start, due, length, width, qty, ops, capacity_lookup_per_op)
+def _format_shift_data(schedule_items: List[Dict]) -> Dict:
+    """格式化班次级数据"""
+    shift_data = []
+    processed_shifts = set()
+    
+    for item in schedule_items:
+        shift_key = (item['shift_date'], item['shift_type'])
+        if shift_key not in processed_shifts:
+            # 找到该班次的所有工序
+            shift_items = [i for i in schedule_items 
+                          if (i['shift_date'] == item['shift_date'] and 
+                              i['shift_type'] == item['shift_type'])]
+            
+            for shift_item in shift_items:
+                shift_item_copy = shift_item.copy()
+                shift_item_copy['time_label'] = f"{shift_item['shift_date'].strftime('%m-%d')} {shift_item['shift_type']}"
+                shift_item_copy['shift_key'] = f"{shift_item['shift_date']}-{shift_item['shift_type']}"
+                shift_data.append(shift_item_copy)
+            
+            processed_shifts.add(shift_key)
+    
+    return {
+        'items': shift_data,
+        'time_labels': [f"{item['shift_date'].strftime('%m-%d')} {item['shift_type']}" 
+                       for item in shift_data],
+        'x_axis_type': 'shift',
+        'x_axis_format': 'shiftly'
+    }
+
+
+def _format_daily_data(schedule_items: List[Dict]) -> Dict:
+    """格式化天级数据"""
+    daily_data = []
+    processed_days = set()
+    
+    for item in schedule_items:
+        day = item['shift_date']
+        if day not in processed_days:
+            # 找到该天的所有工序
+            day_items = [i for i in schedule_items if i['shift_date'] == day]
+            
+            for day_item in day_items:
+                day_item_copy = day_item.copy()
+                day_item_copy['time_label'] = day_item['shift_date'].strftime('%m-%d')
+                day_item_copy['day_key'] = day_item['shift_date'].strftime('%Y-%m-%d')
+                daily_data.append(day_item_copy)
+            
+            processed_days.add(day)
+    
+    return {
+        'items': daily_data,
+        'time_labels': [item['time_label'] for item in daily_data],
+        'x_axis_type': 'day',
+        'x_axis_format': 'daily'
+    }

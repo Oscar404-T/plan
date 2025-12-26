@@ -1,58 +1,53 @@
-try:
-    # Preferred for pydantic v2
-    from pydantic_settings import BaseSettings, SettingsConfigDict
-    _BaseSettings = BaseSettings
-    _SettingsConfig = SettingsConfigDict
-except Exception:
-    try:
-        # Fallback for older pydantic versions (v1)
-        from pydantic import BaseSettings
-        _BaseSettings = BaseSettings
-        _SettingsConfig = None
-    except Exception as exc:  # pragma: no cover - environment issue
-        raise RuntimeError(
-            "pydantic-settings or pydantic is not installed. Install with: `python3 -m pip install pydantic pydantic-settings`"
-        ) from exc
+"""应用配置模块
 
+使用 Pydantic Settings 管理应用配置，支持从 .env 文件加载环境变量
+"""
 
-import os
+from pydantic_settings import BaseSettings
 from typing import Optional
+import os
 
 
-class Settings(_BaseSettings):
-    # Read from the same env vars as `.env.example` (MYSQL_USER, MYSQL_PASSWORD, ...)
-    mysql_user: Optional[str] = None
-    mysql_password: Optional[str] = None
-    mysql_host: Optional[str] = None
-    mysql_port: Optional[int] = None
-    mysql_db: Optional[str] = None
-    secret_key: Optional[str] = None
+class Settings(BaseSettings):
+    """应用配置类"""
+    
+    # JWT配置
+    SECRET_KEY: str = "your-secret-key-here"  # 默认值，建议在生产环境中通过环境变量设置
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    
+    # 应用配置
+    APP_TITLE: str = "排程系统"
+    APP_DESCRIPTION: str = "订单排程系统API"
+    APP_VERSION: str = "1.0.0"
+    
+    # 管理员配置
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "password"
+    
+    # MySQL 配置 - 从环境变量加载
+    MYSQL_USER: str = "root"
+    MYSQL_PASSWORD: str = "yourrootpw"
+    MYSQL_HOST: str = "127.0.0.1"
+    MYSQL_PORT: str = "3306"
+    MYSQL_DB: str = "plan_db"
+    
+    # 数据库配置 - 优先使用DATABASE_URL，否则从MySQL配置构建
+    DATABASE_URL: str = ""
+    ECHO_SQL: bool = False  # 是否打印SQL日志
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 如果没有显式设置DATABASE_URL，从MySQL配置构建
+        if not self.DATABASE_URL:
+            if os.path.exists("dev.db"):  # 检查开发数据库文件是否存在
+                self.DATABASE_URL = "sqlite:///./dev.db"
+            else:
+                self.DATABASE_URL = f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}"
+    
+    class Config:
+        env_file = ".env"  # 从.env文件加载配置
 
-    if _SettingsConfig is not None:
-        model_config = _SettingsConfig(env_file=".env", env_file_encoding="utf-8")
-    else:  # pydantic v1 compatibility
-        class Config:
-            env_file = ".env"
-            env_file_encoding = "utf-8"
 
-    @property
-    def database_url(self) -> str:
-        """Return the DB URL. Priority:
-        1. `DATABASE_URL` env var
-        2. MySQL vars (`MYSQL_USER`, `MYSQL_PASSWORD`, ...)
-        3. Fallback to a local SQLite DB for development
-        """
-        # 1) Prefer explicit DATABASE_URL environment variable
-        env_db = os.getenv("DATABASE_URL")
-        if env_db:
-            return env_db
-
-        # 2) Build from MYSQL_* vars when available
-        if self.mysql_user and self.mysql_password:
-            return f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}"
-
-        # 3) Fallback to a local sqlite DB to make local dev effortless
-        return "sqlite:///./dev.db"
-
-
+# 创建全局配置实例
 settings = Settings()

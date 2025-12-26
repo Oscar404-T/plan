@@ -22,4 +22,6 @@ class Order(Base):
     estimated_yield = Column(Float, nullable=True)
     due_datetime = Column(DateTime, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+    # 车间信息
+    workshop = Column(String(255), nullable=True)
     # 后续可扩展状态等字段

@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-from ... import schemas
-from ... import crud
+from ... import crud, schemas, models
 from ...database.connection import get_db
-from ...core.scheduler import schedule_order_operations, get_shift_for_hour
+from ...core.scheduler import get_shift_for_hour, schedule_order_operations
+from datetime import datetime, timedelta
 import math
 
 router = APIRouter()
@@ -12,6 +11,7 @@ router = APIRouter()
 
 @router.post("/", response_model=schemas.OrderRead)
 def create_order_endpoint(order: schemas.OrderCreate, db: Session = Depends(get_db)):
+    """创建新订单"""
     db_order = crud.create_order(db, order)
     return db_order
 
@@ -24,40 +24,53 @@ def get_order_endpoint(order_id: int, db: Session = Depends(get_db)):
     return db_order
 
 
-@router.post("/schedule", response_model=schemas.ScheduleResponse)
-def schedule_endpoint(order: schemas.OrderCreate, db: Session = Depends(get_db)):
-    # create order record for reference
-    db_order = crud.create_order(db, order)
+@router.delete("/{order_id}")
+def delete_order_endpoint(order_id: int, db: Session = Depends(get_db)):
+    """删除指定ID的订单"""
+    success = crud.delete_order(db, order_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {"message": "Order deleted successfully"}
 
-    # build per-order operations info
-    order_ops = crud.get_order_operations(db, db_order.id)
+
+@router.get("/{order_id}/schedule", response_model=schemas.ScheduleResponse)
+def get_order_schedule(
+    order_id: int,
+    granularity: str = Query("hour", description="时间粒度: hour, shift, day"),
+    db: Session = Depends(get_db)
+):
+    """获取订单排程数据"""
+    # 获取订单信息
+    order = crud.get_order(db, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # 构建每个订单的操作信息
+    order_ops = crud.get_order_operations(db, order_id)
     ops_info = []
     for oo in order_ops:
-        op = db.query(crud.models.Operation).filter(crud.models.Operation.id == oo.operation_id).first()
+        op = db.query(models.Operation).filter(models.Operation.id == oo.operation_id).first()
         if op:
             ops_info.append({
                 "name": op.name,
                 "pieces_per_hour": oo.pieces_per_hour if oo.pieces_per_hour else op.default_pieces_per_hour,
             })
 
-    # fallback global capacity lookup for an operation
+    # 操作产能查找函数
     def capacity_lookup_per_op(op_name, dt):
-        # find operation entry in ops_info
         matched = next((o for o in ops_info if o["name"] == op_name), None)
         if matched and matched.get("pieces_per_hour"):
-            # return the override/default defined per operation
             return matched["pieces_per_hour"]
-        # else fallback to global shift capacity
         shift = get_shift_for_hour(dt)
         cap = crud.get_capacity_by_shift(db, shift.value if hasattr(shift, "value") else shift)
         return cap.pieces_per_hour if cap else 0
 
-    # scheduling window: start now (rounded up to next hour) until due_datetime
+    # 排程窗口
     now = datetime.utcnow()
     start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
     due = order.due_datetime
 
-    # 计算投入量（考虑估计良率：投入量 = 出货数量 / (估计良率/100)）
+    # 计算投入量
     if order.estimated_yield and order.estimated_yield > 0:
         required_input = int(math.ceil(order.quantity / (order.estimated_yield / 100.0)))
     else:
@@ -67,9 +80,15 @@ def schedule_endpoint(order: schemas.OrderCreate, db: Session = Depends(get_db))
 
     allocations = []
     for (s, e, shift, op_name, alloc) in sched["allocations"]:
-        allocations.append({"start": s, "end": e, "shift": shift.value if hasattr(shift, "value") else str(shift), "operation": op_name, "allocated": alloc})
+        allocations.append({
+            "start": s,
+            "end": e,
+            "shift": shift.value if hasattr(shift, "value") else str(shift),
+            "operation": op_name,
+            "allocated": alloc
+        })
 
-    # compute deadline-related flags similar to UI
+    # 计算截止日期相关标志
     total_allocated = sched.get("total_allocated", 0)
     meets_due = total_allocated >= required_input
     expected_completion = None
@@ -86,15 +105,15 @@ def schedule_endpoint(order: schemas.OrderCreate, db: Session = Depends(get_db))
             expected_completion = base + timedelta(hours=hours_needed)
             meets_due_estimate = expected_completion <= due
 
-    return {
-        "order_id": db_order.id,
-        "requested_quantity": order.quantity,
-        "estimated_yield": order.estimated_yield,
-        "required_input": required_input,
-        "total_allocated": sched["total_allocated"],
-        "allocations": allocations,
-        "note": sched["note"],
-        "meets_due": meets_due,
-        "expected_completion": expected_completion,
-        "meets_due_estimate": meets_due_estimate,
-    }
+    return schemas.ScheduleResponse(
+        order_id=order_id,
+        requested_quantity=order.quantity,
+        estimated_yield=order.estimated_yield,
+        required_input=required_input,
+        total_allocated=total_allocated,
+        allocations=allocations,
+        meets_due=meets_due,
+        expected_completion=expected_completion,
+        meets_due_estimate=meets_due_estimate,
+        note=sched.get("note", None)
+    )

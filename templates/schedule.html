@@ -1,172 +1,507 @@
-{% extends 'base.html' %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>订单排程结果</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        .status-badge {
+            font-size: 0.8em;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        .allocation-table th {
+            background-color: #f8f9fa;
+        }
+        .summary-card {
+            border-left: 4px solid #28a745;
+        }
+        .workshop-info {
+            background-color: #e9f7ef;
+            border: 1px solid #28a745;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        .gantt-container {
+            height: 400px;
+            overflow-x: auto;
+            margin-top: 20px;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+        }
+        .gantt-chart {
+            min-width: 100%;
+            height: 100%;
+        }
+        .time-granularity-selector {
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+        <div class="container">
+            <a class="navbar-brand" href="/ui/orders"><i class="bi bi-list-task"></i> 排程规划系统</a>
+            <div class="navbar-nav ms-auto">
+                {% if is_admin %}
+                <a class="nav-link" href="/ui/logout"><i class="bi bi-box-arrow-right"></i> 登出</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
 
-{% block title %}排程结果 - 排程系统{% endblock %}
-
-{% block page_title %}排程结果 - 订单 #{{ order.id }}{% endblock %}
-
-{% block header_actions %}
-<a href="/schedule/{{ order.id }}/csv" class="btn btn-success">导出CSV</a>
-{% endblock %}
-
-{% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">订单信息</div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <table class="table table-borderless">
-                                <tr>
-                                    <th>内部型号</th>
-                                    <td>{{ order.internal_model or '未设置' }}</td>
-                                </tr>
-                                <tr>
-                                    <th>尺寸 (inch)</th>
-                                    <td>{{ "%.2f"|format(order.size or 0) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>出货数量</th>
-                                    <td>{{ order.quantity }}</td>
-                                </tr>
-                                <tr>
-                                    <th>预估良率</th>
-                                    <td>{{ "%.2f"|format(order.estimated_yield or 100) }}%</td>
-                                </tr>
-                            </table>
-                        </div>
-                        <div class="col-md-6">
-                            <table class="table table-borderless">
-                                <tr>
-                                    <th>长 (mm)</th>
-                                    <td>{{ "%.2f"|format(order.length) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>宽 (mm)</th>
-                                    <td>{{ "%.2f"|format(order.width) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>最晚交期</th>
-                                    <td>{{ order.due_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
-                                </tr>
-                            </table>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h1>订单排程结果</h1>
+                    <a href="/ui/orders/create" class="btn btn-success"><i class="bi bi-plus-circle"></i> 创建新订单</a>
+                </div>
+                
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    {{ error }}
+                </div>
+                {% endif %}
+                
+                <!-- 订单信息卡片 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">订单信息</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <th width="200px">订单ID</th>
+                                        <td>{{ order.id }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>内部型号</th>
+                                        <td>{{ order.internal_model if order.internal_model else '-' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>产品尺寸</th>
+                                        <td>{{ "%.2f"|format(order.length) }} × {{ "%.2f"|format(order.width) }} mm ({{ "%.1f"|format(order.size) }} inch)</td>
+                                    </tr>
+                                    <tr>
+                                        <th>出货数量</th>
+                                        <td>{{ order.quantity }} 件</td>
+                                    </tr>
+                                    <tr>
+                                        <th>预估良率</th>
+                                        <td>{{ "%.2f"|format(order.estimated_yield) if order.estimated_yield else '-' }}%</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <th width="200px">最晚交期</th>
+                                        <td>{{ order.due_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>创建时间</th>
+                                        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else '-' }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>车间</th>
+                                        <td>
+                                            <span class="badge bg-info">{{ order.workshop if order.workshop else '未指定' }}</span>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">排程统计</div>
-                <div class="card-body">
-                    <div class="row text-center">
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <h5>投入量</h5>
-                                    <h3>{{ required_input }}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <h5>已分配</h5>
-                                    <h3>{{ total_allocated }}</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <h5>达成率</h5>
-                                    <h3>{{ "%.2f"|format(allocated_pct) }}%</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <h5>剩余</h5>
-                                    <h3>{{ remaining }}</h3>
-                                    {% if remaining > 0 %}
-                                    <span class="text-danger">未完成</span>
-                                    {% else %}
-                                    <span class="text-success">已完成</span>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="progress mb-4" style="height: 30px;">
-                        <div class="progress-bar" 
-                             role="progressbar" 
-                             style="width: {{ min(allocated_pct, 100) }}%" 
-                             aria-valuenow="{{ min(allocated_pct, 100) }}" 
-                             aria-valuemin="0" 
-                             aria-valuemax="100">
-                            {{ "%.2f"|format(allocated_pct) }}%
-                        </div>
-                    </div>
-                    
-                    {% if not meets_due %}
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <strong>注意：</strong>根据当前产能，无法在最晚交期前完成订单。
-                        {% if expected_completion %}
-                        预计完成时间: {{ expected_completion.strftime('%Y-%m-%d %H:%M') }}
-                        {% endif %}
-                        {% if not meets_due_estimate %}
-                        即使延长交期也无法保证完成，请考虑增加产能或调整订单量。
-                        {% endif %}
-                    </div>
+                
+                <!-- 车间信息 -->
+                <div class="workshop-info">
+                    <h5><i class="bi bi-building"></i> 车间信息</h5>
+                    <p><strong>当前订单分配至：{{ order.workshop if order.workshop else '未指定车间' }}</strong></p>
+                    {% if order.workshop %}
+                    <p>该订单将在 <strong>{{ order.workshop }}</strong> 进行生产，请确保该车间的设备和人员已准备就绪。</p>
+                    {% else %}
+                    <p class="text-warning">警告：此订单未指定车间，请在创建订单时选择适当的车间。</p>
                     {% endif %}
                 </div>
+                
+                <!-- 排程摘要 -->
+                <div class="card mb-4 summary-card">
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-md-3 mb-3">
+                                <h3>{{ allocated_pct|round(1) }}%</h3>
+                                <p class="text-muted">完成率</p>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <h3>{{ total_allocated }} / {{ required_input }}</h3>
+                                <p class="text-muted">已分配 / 需要投入</p>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <h3>{{ remaining if remaining > 0 else 0 }}</h3>
+                                <p class="text-muted">剩余投入</p>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <h3>
+                                    {% if meets_due %}
+                                        <i class="bi bi-check-circle-fill text-success"></i> 按时完成
+                                    {% else %}
+                                        <i class="bi bi-exclamation-circle-fill text-warning"></i> 无法按时
+                                    {% endif %}
+                                </h3>
+                                <p class="text-muted">交付状态</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 甘特图显示 -->
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">排程甘特图</h5>
+                        <div class="time-granularity-controls">
+                            <label class="form-label me-2">时间粒度:</label>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check" name="granularity" id="granularity-hour" value="hour" autocomplete="off" checked>
+                                <label class="btn btn-outline-primary" for="granularity-hour">小时</label>
+                                
+                                <input type="radio" class="btn-check" name="granularity" id="granularity-shift" value="shift" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="granularity-shift">班次</label>
+                                
+                                <input type="radio" class="btn-check" name="granularity" id="granularity-day" value="day" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="granularity-day">天</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="gantt-container" class="gantt-container">
+                            <svg id="gantt-chart"></svg>
+                        </div>
+                        <div class="legend mt-3">
+                            <h6>工序图例:</h6>
+                            <div id="legend-container" class="d-flex flex-wrap"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 排程详情 -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">排程详情</h5>
+                        <a href="/schedule/{{ order.id }}/csv" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-download"></i> 导出CSV
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped allocation-table">
+                                <thead>
+                                    <tr>
+                                        <th>开始时间</th>
+                                        <th>结束时间</th>
+                                        <th>班次</th>
+                                        <th>工序</th>
+                                        <th>分配数量</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for alloc in allocations %}
+                                    <tr>
+                                        <td>{{ alloc.start.strftime('%m-%d %H:%M') }}</td>
+                                        <td>{{ alloc.end.strftime('%m-%d %H:%M') }}</td>
+                                        <td>
+                                            {% if alloc.shift == 'day' %}
+                                                <span class="badge bg-primary">白班</span>
+                                            {% elif alloc.shift == 'night' %}
+                                                <span class="badge bg-dark">夜班</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ alloc.shift }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ alloc.operation }}</td>
+                                        <td>{{ alloc.allocated }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if not allocations %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">暂无排程数据</td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if expected_completion %}
+                <div class="alert alert-warning mt-4">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    预计完成时间: <strong>{{ expected_completion.strftime('%Y-%m-%d %H:%M') }}</strong>
+                    (比最晚交期{% if expected_completion > order.due_datetime %}晚{% else %}早{% endif %}
+                    {{ ((expected_completion - order.due_datetime).total_seconds() / 3600)|round(1) }}小时)
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">排程详情</div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead>
-                                <tr>
-                                    <th>开始时间</th>
-                                    <th>结束时间</th>
-                                    <th>班次</th>
-                                    <th>工序</th>
-                                    <th>分配数量</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for alloc in allocations %}
-                                <tr>
-                                    <td>{{ alloc.start.strftime('%m-%d %H:%M') }}</td>
-                                    <td>{{ alloc.end.strftime('%m-%d %H:%M') }}</td>
-                                    <td>
-                                        <span class="badge bg-{% if alloc.shift == 'day' %}primary{% elif alloc.shift == 'night' %}dark{% else %}secondary{% endif %}">
-                                            {{ alloc.shift }}
-                                        </span>
-                                    </td>
-                                    <td>{{ alloc.operation }}</td>
-                                    <td>{{ alloc.allocated }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
+    <!-- 引入D3.js用于甘特图 -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        // 将后端数据转换为甘特图数据格式
+        const allocations = [
+            {% for alloc in allocations %}
+            {
+                start: new Date("{{ alloc.start.isoformat() }}"),
+                end: new Date("{{ alloc.end.isoformat() }}"),
+                shift: "{{ alloc.shift }}",
+                operation: "{{ alloc.operation }}",
+                allocated: {{ alloc.allocated }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+
+        console.log("Allocations data:", allocations); // 调试信息
+
+        // 渲染甘特图的函数
+        function renderGanttChart(granularity) {
+            console.log("Rendering gantt chart with granularity:", granularity); // 调试信息
+            console.log("Data length:", allocations.length); // 调试信息
+            
+            // 清空之前的图表
+            d3.select("#gantt-chart").selectAll("*").remove();
+
+            // 设置图表尺寸
+            const margin = {top: 20, right: 30, bottom: 100, left: 150};
+            const container = document.getElementById('gantt-container');
+            if (!container) {
+                console.error("Container element not found");
+                return;
+            }
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = 400;
+
+            // 创建SVG元素
+            const svg = d3.select("#gantt-chart")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom);
+
+            const g = svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            // 数据处理 - 根据时间粒度进行聚合
+            let processedData = [];
+            if (granularity === 'hour') {
+                processedData = allocations.map(d => ({...d}));
+            } else if (granularity === 'shift') {
+                // 按班次聚合数据
+                const shiftGroups = {};
+                allocations.forEach(d => {
+                    const key = d.operation + '-' + d.shift;
+                    if (!shiftGroups[key]) {
+                        shiftGroups[key] = {
+                            operation: d.operation,
+                            shift: d.shift,
+                            start: d.start,
+                            end: d.end,
+                            allocated: 0,
+                            allItems: []
+                        };
+                    } else {
+                        if (d.start < shiftGroups[key].start) shiftGroups[key].start = d.start;
+                        if (d.end > shiftGroups[key].end) shiftGroups[key].end = d.end;
+                    }
+                    shiftGroups[key].allocated += d.allocated;
+                    shiftGroups[key].allItems.push(d);
+                });
+                processedData = Object.values(shiftGroups);
+            } else if (granularity === 'day') {
+                // 按天聚合数据
+                const dayGroups = {};
+                allocations.forEach(d => {
+                    const startDay = new Date(d.start.getFullYear(), d.start.getMonth(), d.start.getDate());
+                    const endDay = new Date(d.end.getFullYear(), d.end.getMonth(), d.end.getDate());
+                    
+                    const key = d.operation + '-' + startDay.toISOString().split('T')[0];
+                    if (!dayGroups[key]) {
+                        dayGroups[key] = {
+                            operation: d.operation,
+                            shift: d.shift, // 保留第一个班次信息
+                            start: startDay,
+                            end: endDay,
+                            allocated: 0,
+                            allItems: []
+                        };
+                    } else {
+                        if (startDay < dayGroups[key].start) dayGroups[key].start = startDay;
+                        if (endDay > dayGroups[key].end) dayGroups[key].end = endDay;
+                    }
+                    dayGroups[key].allocated += d.allocated;
+                    dayGroups[key].allItems.push(d);
+                });
+                processedData = Object.values(dayGroups);
+            }
+
+            console.log("Processed data:", processedData); // 调试信息
+
+            // 检查是否有数据
+            if (processedData.length === 0) {
+                g.append("text")
+                    .attr("x", width / 2)
+                    .attr("y", height / 2)
+                    .attr("text-anchor", "middle")
+                    .text("没有排程数据");
+                return;
+            }
+
+            // 获取所有不同的工序名称
+            const operations = [...new Set(processedData.map(d => d.operation))];
+            
+            // 获取时间范围 - 修复时间范围计算
+            const allTimes = [...allocations, ...processedData].flatMap(d => [d.start, d.end]);
+            const extent = d3.extent(allTimes);
+            const padding = 3600000; // 1小时的毫秒数
+            
+            console.log("Time extent:", extent); // 调试信息
+            
+            // X轴：时间轴
+            const x = d3.scaleTime()
+                .domain([new Date(extent[0] - padding), new Date(extent[1] + padding * 3)]) // 增加右侧填充
+                .range([0, width]);
+                
+            // Y轴：工序
+            const y = d3.scaleBand()
+                .domain(operations)
+                .range([0, height])
+                .padding(0.1);
+
+            // 添加X轴
+            g.append("g")
+                .attr("class", "x-axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(d3.axisBottom(x).ticks(10))
+                .selectAll("text")
+                .style("text-anchor", "end")
+                .attr("dx", "-.8em")
+                .attr("dy", ".15em")
+                .attr("transform", "rotate(-45)");
+
+            // 添加Y轴
+            g.append("g")
+                .attr("class", "y-axis")
+                .call(d3.axisLeft(y));
+
+            // 定义颜色比例尺
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+            
+            // 定义工序颜色
+            const operationColor = d => {
+                return color(d.operation); // 使用工序名称作为颜色映射的依据
+            };
+
+            console.log("Operations:", operations); // 调试信息
+
+            // 添加甘特条
+            const bars = g.selectAll(".bar")
+                .data(processedData)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => {
+                    const xValue = x(d.start);
+                    return isNaN(xValue) ? 0 : xValue;
+                })
+                .attr("y", d => {
+                    const yValue = y(d.operation);
+                    return isNaN(yValue) ? 0 : yValue;
+                })
+                .attr("width", d => {
+                    const widthValue = x(d.end) - x(d.start);
+                    return isNaN(widthValue) || widthValue <= 0 ? 1 : widthValue; // 确保宽度至少为1
+                })
+                .attr("height", y.bandwidth())
+                .attr("fill", d => operationColor(d))  // 使用工序颜色
+                .attr("opacity", 0.8);
+                
+            // 添加工具提示
+            bars.append("title")
+                .text(d => `${d.operation}\n班次: ${d.shift}\n时间: ${d.start.toLocaleString()} - ${d.end.toLocaleString()}\n数量: ${d.allocated}`);
+
+            // 添加图例 - 工序
+            const legend = svg.append("g");
+            const legendKeys = operations.map((op, i) => ({operation: op, color: color(op)}));
+            
+            legend.selectAll(".legend")
+                .data(legendKeys)
+                .enter()
+                .append("g")
+                .attr("class", "legend")
+                .attr("transform", (d, i) => `translate(${width + margin.left + 10}, ${i * 20})`)
+                .each(function(d) {
+                    d3.select(this).append("rect")
+                        .attr("width", 15)
+                        .attr("height", 15)
+                        .attr("fill", d.color);
+                    
+                    d3.select(this).append("text")
+                        .attr("x", 20)
+                        .attr("y", 9)
+                        .attr("dy", "0.35em")
+                        .text(d.operation);
+                });
+                
+            // 添加班次图例
+            const shiftLegend = svg.append("g");
+            const shiftLegendKeys = [
+                { shift: '白班', color: '#4CAF50' },
+                { shift: '夜班', color: '#2196F3' }
+            ];
+            
+            shiftLegend.selectAll(".shift-legend")
+                .data(shiftLegendKeys)
+                .enter()
+                .append("g")
+                .attr("class", "shift-legend")
+                .attr("transform", (d, i) => `translate(${width + margin.left + 10}, ${legendKeys.length * 20 + i * 20 + 20})`)
+                .each(function(d) {
+                    d3.select(this).append("rect")
+                        .attr("width", 15)
+                        .attr("height", 15)
+                        .attr("fill", d.color);
+                    
+                    d3.select(this).append("text")
+                        .attr("x", 20)
+                        .attr("y", 9)
+                        .attr("dy", "0.35em")
+                        .text(d.shift);
+                });
+        }
+
+        // 监听时间粒度选择变化
+        const granularityElement = document.querySelector('input[name="granularity"]');
+        if (granularityElement) {
+            // 当单选按钮改变时触发
+            document.querySelectorAll('input[name="granularity"]').forEach((radio) => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        renderGanttChart(this.value);
+                    }
+                });
+            });
+        } else {
+            console.error("Granularity element not found");
+        }
+
+        // 初始渲染甘特图
+        renderGanttChart('hour');
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

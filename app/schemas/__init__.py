@@ -1,63 +1,89 @@
-"""Pydantic 模式（schemas）
+"""API数据模型模块
 
-用于请求与响应的数据验证与序列化。这里添加中文注释以便于团队理解字段含义。
+定义所有 Pydantic 模型（请求/响应结构体）
 """
 
+from enum import Enum
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import List, Optional
 from datetime import datetime
 
 
-class UserCreate(BaseModel):
+class ShiftEnum(str, Enum):
+    A = "A"
+    B = "B"
+    C = "C"
+
+
+class UserBase(BaseModel):
     email: EmailStr
-    name: Optional[str] = None
 
 
-class UserRead(BaseModel):
+class UserCreate(UserBase):
+    password: str
+    full_name: Optional[str] = None
+
+
+class UserRead(UserBase):
     id: int
-    email: EmailStr
-    name: Optional[str] = None
+    full_name: Optional[str] = None
 
-    # pydantic v2: use `from_attributes` in model_config instead of orm_mode
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
-class CapacityCreate(BaseModel):
+class CapacityBase(BaseModel):
     shift: str
     pieces_per_hour: int
     description: Optional[str] = None
 
 
-class CapacityRead(BaseModel):
+class CapacityCreate(CapacityBase):
+    pass
+
+
+class CapacityRead(CapacityBase):
     id: int
-    shift: str
-    pieces_per_hour: int
-    description: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
-class OperationCreate(BaseModel):
+class OperationBase(BaseModel):
     name: str
     default_pieces_per_hour: Optional[int] = None
     description: Optional[str] = None
 
 
-class OperationRead(BaseModel):
+class OperationCreate(OperationBase):
+    pass
+
+
+class OperationRead(OperationBase):
     id: int
-    name: str
-    default_pieces_per_hour: Optional[int] = None
-    description: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
-class OrderOperationCreate(BaseModel):
+class OrderOperationBase(BaseModel):
     operation_name: str
     pieces_per_hour: Optional[int] = None
 
 
-class OrderCreate(BaseModel):
+class OrderOperationCreate(OrderOperationBase):
+    pass
+
+
+class OrderOperationRead(OrderOperationBase):
+    id: int
+    order_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class OrderBase(BaseModel):
     internal_model: Optional[str] = None  # 内部型号
     length: float  # 产品长（mm）
     width: float   # 产品宽（mm）
@@ -65,24 +91,23 @@ class OrderCreate(BaseModel):
     quantity: int  # 出货数量
     estimated_yield: Optional[float] = None  # 预估良率（%）
     due_datetime: datetime  # 最晚交期（本地时间）
-    # 按序的工序列表；若未提供则使用系统默认工序
-    operations: Optional[List[OrderOperationCreate]] = None
+    workshop: Optional[str] = None  # 车间
 
 
-class OrderRead(BaseModel):
+class OrderCreate(OrderBase):
+    operations: Optional[List['OrderOperationCreate']] = None
+
+
+class OrderRead(OrderBase):
     id: int
-    internal_model: Optional[str] = None
-    length: float
-    width: float
-    size: Optional[float] = None
-    estimated_yield: Optional[float] = None
-    quantity: int
-    due_datetime: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
-class HourAllocation(BaseModel):
+class ScheduleAllocation(BaseModel):
     start: datetime
     end: datetime
     shift: str
@@ -96,8 +121,37 @@ class ScheduleResponse(BaseModel):
     estimated_yield: Optional[float] = None
     required_input: int
     total_allocated: int
-    allocations: List[HourAllocation]
+    allocations: List[ScheduleAllocation]
     note: Optional[str] = None
     meets_due: bool
     expected_completion: Optional[datetime] = None
     meets_due_estimate: Optional[bool] = None
+
+    class Config:
+        from_attributes = True
+
+
+# 解决向前引用问题
+OrderCreate.update_forward_refs()
+
+
+__all__ = [
+    "UserBase",
+    "UserCreate",
+    "UserRead",
+    "CapacityBase",
+    "CapacityCreate",
+    "CapacityRead",
+    "OperationBase",
+    "OperationCreate",
+    "OperationRead",
+    "OrderBase",
+    "OrderCreate",
+    "OrderRead",
+    "OrderOperationBase",
+    "OrderOperationCreate",
+    "OrderOperationRead",
+    "ScheduleAllocation",
+    "ScheduleResponse",
+    "ShiftEnum",
+]

@@ -1,3 +1,12 @@
+"""配置模块入口
+
+此模块作为配置相关功能的统一入口，实际功能在config包中实现
+"""
+
+from .settings import settings
+
+__all__ = ["settings"]
+
 try:
     # Preferred for pydantic v2
     from pydantic_settings import BaseSettings, SettingsConfigDict

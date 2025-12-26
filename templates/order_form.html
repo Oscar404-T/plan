@@ -1,115 +1,114 @@
-{% extends 'base.html' %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>订单创建</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+        <div class="container">
+            <a class="navbar-brand" href="/ui/orders"><i class="bi bi-list-task"></i> 排程规划系统</a>
+            <div class="navbar-nav ms-auto">
+                {% if is_admin %}
+                <a class="nav-link" href="/ui/logout"><i class="bi bi-box-arrow-right"></i> 登出</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
 
-{% block title %}创建订单 - 排程系统{% endblock %}
-
-{% block page_title %}创建订单{% endblock %}
-
-{% block content %}
-<div class="container-fluid">
-    <form method="post" id="orderForm">
+    <div class="container mt-4">
         <div class="row">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-header">订单信息</div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="internal_model" class="form-label">内部型号</label>
-                                    <input type="text" class="form-control" id="internal_model" name="internal_model">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="length" class="form-label">长 (mm)</label>
-                                    <input type="number" step="0.01" class="form-control" id="length" name="length" required onchange="calculateSize()">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="width" class="form-label">宽 (mm)</label>
-                                    <input type="number" step="0.01" class="form-control" id="width" name="width" required onchange="calculateSize()">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="size" class="form-label">尺寸 (inch)</label>
-                                    <input type="number" step="0.01" class="form-control" id="size" name="size" readonly>
-                                    <div class="form-text">自动计算 (sqrt(长² + 宽²) / 25.4)</div>
-                                </div>
+            <div class="col-12">
+                <h1 class="mb-4">创建订单</h1>
+                
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    {{ error }}
+                </div>
+                {% endif %}
+                
+                <form method="post" action="/ui/orders/create">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="internal_model" class="form-label">内部型号</label>
+                                <input type="text" class="form-control" id="internal_model" name="internal_model" placeholder="可选">
                             </div>
                             
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="quantity" class="form-label">出货数量</label>
-                                    <input type="number" class="form-control" id="quantity" name="quantity" required>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="estimated_yield" class="form-label">预估良率 (%)</label>
-                                    <input type="number" step="0.01" class="form-control" id="estimated_yield" name="estimated_yield" value="100.00">
-                                    <div class="form-text">默认为100%，影响投入量计算</div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label for="due_datetime" class="form-label">最晚交期</label>
-                                    <input type="datetime-local" class="form-control" id="due_datetime" name="due_datetime" required>
-                                </div>
+                            <div class="mb-3">
+                                <label for="length" class="form-label">产品长度 (mm)</label>
+                                <input type="number" step="0.1" class="form-control" id="length" name="length" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="width" class="form-label">产品宽度 (mm)</label>
+                                <input type="number" step="0.1" class="form-control" id="width" name="width" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="quantity" class="form-label">出货数量</label>
+                                <input type="number" class="form-control" id="quantity" name="quantity" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="estimated_yield" class="form-label">预估良率 (%)</label>
+                                <input type="number" step="0.1" class="form-control" id="estimated_yield" name="estimated_yield" placeholder="例如: 98.5">
+                                <div class="form-text">用于计算投入量，留空则按100%计算</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="due_datetime" class="form-label">最晚交期</label>
+                                <input type="datetime-local" class="form-control" id="due_datetime" name="due_datetime" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="workshop" class="form-label">选择车间</label>
+                                <select class="form-select" id="workshop" name="workshop" required>
+                                    <option value="" disabled selected>请选择车间</option>
+                                    <option value="UTG1车间">UTG1车间</option>
+                                    <option value="UTG2车间">UTG2车间</option>
+                                    <option value="UTG3车间">UTG3车间</option>
+                                    <option value="中试线">中试线</option>
+                                </select>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span>工序配置</span>
-                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="fillAllOperations()">填充所有工序</button>
-                    </div>
-                    <div class="card-body">
-                        <div id="operations-container">
-                            {% for operation in operations %}
+                        
+                        <div class="col-md-6">
+                            <h5>工序产能设置</h5>
+                            <p class="text-muted">为每个工序设置每小时产能，留空则使用系统默认值</p>
+                            
+                            {% for op in operations %}
                             <div class="mb-3">
-                                <label for="op_{{ operation.id }}" class="form-label">{{ operation.name }}</label>
-                                <input type="number" class="form-control operation-input" id="op_{{ operation.id }}" name="op_{{ operation.id }}" placeholder="{{ operation.default_pieces_per_hour or '未设置' }}/h">
+                                <label for="op_{{ op.id }}" class="form-label">{{ op.name }}</label>
+                                <input type="number" class="form-control" id="op_{{ op.id }}" name="op_{{ op.id }}" 
+                                       placeholder="每小时产能 (件)，默认: {{ op.default_pieces_per_hour if op.default_pieces_per_hour else '未设置' }}">
                             </div>
                             {% endfor %}
+                            
+                            {% if not operations %}
+                            <div class="alert alert-warning">
+                                <p><i class="bi bi-exclamation-triangle"></i> 系统中没有定义任何工序</p>
+                                <p class="mb-0">请通过API添加工序后才能创建订单</p>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
-                </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-success" {% if not operations %}disabled{% endif %}>
+                            <i class="bi bi-plus-circle"></i> 创建订单并计算排程
+                        </button>
+                        <a href="/ui/orders" class="btn btn-outline-secondary">返回订单列表</a>
+                    </div>
+                </form>
             </div>
         </div>
-        
-        <div class="d-grid gap-2 col-2 mx-auto">
-            <button type="submit" class="btn btn-success btn-lg">创建订单并排程</button>
-        </div>
-    </form>
-</div>
+    </div>
 
-<script>
-function calculateSize() {
-    const length = parseFloat(document.getElementById('length').value);
-    const width = parseFloat(document.getElementById('width').value);
-    
-    if (!isNaN(length) && !isNaN(width)) {
-        // 计算公式: sqrt(length^2 + width^2) / 25.4
-        const size = Math.sqrt(length * length + width * width) / 25.4;
-        document.getElementById('size').value = size.toFixed(2);
-    }
-}
-
-function fillAllOperations() {
-    const inputs = document.querySelectorAll('.operation-input');
-    inputs.forEach(input => {
-        if (!input.value) {
-            // 如果默认值存在则使用，否则设为100
-            const placeholderValue = input.placeholder;
-            if (placeholderValue && placeholderValue !== '未设置/h') {
-                const defaultValue = placeholderValue.replace('/h', '');
-                input.value = defaultValue;
-            } else {
-                input.value = 100;
-            }
-        }
-    });
-}
-</script>
-{% endblock %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

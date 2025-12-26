@@ -1,15 +1,9 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from .config import settings
+"""
+数据库模块入口
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+此模块作为数据库相关功能的统一入口，实际功能在database包中实现
+"""
 
+from .database.connection import engine, get_db, Base, SessionLocal
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+__all__ = ["engine", "get_db", "Base", "SessionLocal"]

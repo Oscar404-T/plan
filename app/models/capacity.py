@@ -2,7 +2,12 @@
 
 from sqlalchemy import Column, Integer, String, Enum, Float
 from .base import Base
-from ..core.scheduler import ShiftEnum
+from enum import Enum as PyEnum
+
+
+class ShiftEnum(str, PyEnum):
+    day = "day"
+    night = "night"
 
 
 class Capacity(Base):
