@@ -1,0 +1,13 @@
+                                    <tr>
+                                        <td>{{ order.id }}</td>
+                                        <td>{{ order.internal_model or 'N/A' }}</td>
+                                        <td>{{ order.length }} × {{ order.width }}{% if order.thickness %} × {{ order.thickness }}{% endif %}</td>
+                                        <td>{{ order.quantity }}</td>
+                                        <td>{{ order.estimated_yield or 'N/A' }}%</td>
+                                        <td>{{ order.due_datetime.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>{{ order.workshop or 'N/A' }}</td>
+                                        <td>
+                                            <a href="/ui/orders/{{ order.id }}" class="btn btn-outline-primary btn-sm me-2">查看排程</a>
+                                            <a href="/ui/orders/{{ order.id }}/csv" class="btn btn-outline-success btn-sm">导出CSV</a>
+                                        </td>
+                                    </tr>

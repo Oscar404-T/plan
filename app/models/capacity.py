@@ -1,22 +1,21 @@
-"""产能模型定义"""
+"""产能数据库模型
 
-from sqlalchemy import Column, Integer, String, Enum, Float
-from .base import Base
-from enum import Enum as PyEnum
+定义产能相关的数据模型
+"""
 
-
-class ShiftEnum(str, PyEnum):
-    day = "day"
-    night = "night"
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum
+import sqlalchemy
+from sqlalchemy.orm import relationship
+from ..database.connection import Base
 
 
 class Capacity(Base):
-    """产能模型"""
+    """产能表"""
     __tablename__ = "capacities"
+
     id = Column(Integer, primary_key=True, index=True)
-    # 分班：'day' 或 'night'（枚举类型）
-    shift = Column(Enum(ShiftEnum), nullable=False)
-    # 每小时产能（单位：件/小时）
-    pieces_per_hour = Column(Integer, nullable=False)
-    # 可选说明
-    description = Column(String(255), nullable=True)
+    shift = Column(Enum('day', 'night', name='shiftenum'), nullable=False)  # 班次
+    pieces_per_hour = Column(Integer, nullable=False)  # 每小时产能
+    description = Column(String(255), nullable=True)  # 描述
+    
+    

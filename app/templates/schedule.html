@@ -54,22 +54,6 @@
         .gantt-container::-webkit-scrollbar-thumb:hover {
             background: #a8a8a8;
         }
-        .allocation-table-container {
-            max-height: 800px;
-            overflow-y: auto;
-        }
-        /* 为表格添加样式，模拟每页显示效果 */
-        .allocation-table tbody {
-            display: block;
-            max-height: 600px; /* 调整高度以适应约40行 */
-            overflow-y: auto;
-        }
-        .allocation-table thead, 
-        .allocation-table tbody tr {
-            display: table;
-            width: 100%;
-            table-layout: fixed;
-        }
     </style>
 </head>
 <body>
@@ -78,7 +62,6 @@
         <div class="container">
             <a class="navbar-brand" href="/ui/orders"><i class="bi bi-list-task"></i> 排程规划系统</a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="/ui/capacities"><i class="bi bi-gear"></i> 产能管理</a>
                 {% if is_admin %}
                 <a class="nav-link" href="/ui/logout"><i class="bi bi-box-arrow-right"></i> 登出</a>
                 {% endif %}
@@ -119,17 +102,13 @@
                                     </tr>
                                     <tr>
                                         <th>产品规格</th>
-                                        <td>{{ order.length }} × {{ order.width }}{% if order.thickness %} × {{ order.thickness }}{% endif %} mm 
-                                            {% if order.thickness %}
-                                            (叠数: {{ calculate_layers(order.thickness) }})
-                                            {% endif %}
-                                        </td>
+                                        <td>{{ order.length }} × {{ order.width }}{% if order.thickness %} × {{ order.thickness }}{% endif %} mm</td>
                                     </tr>
                                     <tr>
                                         <th>原玻规格</th>
                                         <td>
                                             {% if order.original_length and order.original_width %}
-                                                {{ order.original_length }} × {{ order.original_width }} mm
+                                                {{ order.original_length }} × {{ order.orc iginal_width }} mm
                                                 (最大切数: {{ calculate_max_cutting_count(order.original_length, order.original_width, order.length, order.width) }})
                                             {% else %}
                                                 未设置
@@ -220,30 +199,22 @@
                         <h5 class="mb-0">排程详情</h5>
                     </div>
                     <div class="card-body">
-                        <div class="card mb-4">
-                            <div class="card-header">
-                                <h5>排程甘特图</h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="gantt-chart" style="height: 400px; border: 1px solid #ccc;"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="table-responsive allocation-table-container">
+                        <div class="table-responsive">
                             <table class="table table-striped allocation-table">
                                 <thead>
                                     <tr>
-                                        <th>工序</th>
-                                        <th>班次</th>
                                         <th>开始时间</th>
                                         <th>结束时间</th>
+                                        <th>班次</th>
+                                        <th>工序</th>
                                         <th>分配数量</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for alloc in allocations %}
                                     <tr>
-                                        <td>{{ alloc[3] }}</td>  <!-- op_name -->
+                                        <td>{{ alloc[0][:16] }}</td>  <!-- start_time as ISO string -->
+                                        <td>{{ alloc[1][:16] }}</td>  <!-- end_time as ISO string -->
                                         <td>
                                             {% if alloc[2] == 'day' %}
                                                 <span class="badge bg-primary">白班</span>
@@ -253,8 +224,7 @@
                                                 <span class="badge bg-secondary">{{ alloc[2] }}</span>  <!-- shift_type -->
                                             {% endif %}
                                         </td>
-                                        <td>{{ alloc[0][:16].replace('T', ' ') }}</td>  <!-- start_time -->
-                                        <td>{{ alloc[1][:16].replace('T', ' ') }}</td>  <!-- end_time -->
+                                        <td>{{ alloc[3] }}</td>  <!-- op_name -->
                                         <td>{{ alloc[4] }}</td>  <!-- allocated -->
                                     </tr>
                                     {% endfor %}
@@ -266,6 +236,15 @@
                                 </tbody>
                             </table>
                         </div>
+                        
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5>排程甘特图</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="gantt-chart" style="height: 400px; border: 1px solid #ccc;"></div>
+                            </div>
+                        </div>
                     </div>
                     
                     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -276,111 +255,73 @@
                         // 将分配数据转换为甘特图格式
                         var ganttData = [];
                         
-                        // 获取所有唯一的工序名称，用于分配颜色
-                        var uniqueOps = [...new Set(allocations.map(alloc => alloc[3]))];
-                        
-                        // 定义颜色数组
-                        var colors = [
-                            '#3498db', // 蓝色
-                            '#2ecc71', // 绿色
-                            '#e74c3c', // 红色
-                            '#9b59b6', // 紫色
-                            '#f1c40f', // 黄色
-                            '#1abc9c', // 青色
-                            '#d35400', // 橙色
-                            '#34495e', // 深灰
-                            '#7f8c8d', // 灰色
-                            '#e67e22'  // 橙红
-                        ];
-                        
-                        // 创建工序到颜色的映射
-                        var opColorMap = {};
-                        uniqueOps.forEach((op, index) => {
-                            opColorMap[op] = colors[index % colors.length];
-                        });
-                        
                         // 添加分配信息到Gantt图数据
                         for (let i = 0; i < allocations.length; i++) {
                             let alloc = allocations[i];
                             let d = {
                                 op: alloc[3],  // op_name
                                 shift: alloc[2],  // shift_type
-                                start: new Date(alloc[0]),  // start_time
-                                end: new Date(alloc[1]),    // end_time
+                                start: new Date(alloc[0]),  // start_time as ISO string
+                                end: new Date(alloc[1]),    // end_time as ISO string
                                 allocated: alloc[4]  // allocated
                             };
                             
-                            ganttData.push({
-                                x: d.op,  // 工序名称
-                                y: [d.start.getTime(), d.end.getTime()], // 时间范围
-                                allocated: d.allocated, // 分配数量
-                                fillColor: opColorMap[d.op] // 根据工序分配颜色
-                            });
+                            // 计算小时数
+                            let hours = (d.end - d.start) / (1000 * 60 * 60);
+                            
+                            // 计算每小时分配的数量
+                            let perHour = d.allocated / hours;
+                            
+                            // 将时间段分割为小时段，每段最多8小时
+                            let current = new Date(d.start);
+                            let remainingAllocation = d.allocated; // 剩余分配数量
+                            
+                            while (current < d.end && remainingAllocation > 0) {
+                                let nextHour = new Date(current);
+                                nextHour.setHours(nextHour.getHours() + 1);
+                                
+                                if (nextHour > d.end) {
+                                    nextHour = new Date(d.end);
+                                }
+                                
+                                // 计算当前小时段的分配数量
+                                let currentHourAllocation = Math.min(
+                                    Math.round(perHour * ((nextHour - current) / (1000 * 60 * 60))),
+                                    remainingAllocation // 不能超过剩余数量
+                                );
+                                
+                                if (currentHourAllocation > 0) {
+                                    ganttData.push({
+                                        x: d.op,
+                                        y: [new Date(current), new Date(nextHour)],
+                                        // 计算当前时间段的班次
+                                        shift: current.getHours() >= 8 && current.getHours() < 20 ? 'day' : 'night',
+                                        allocated: currentHourAllocation
+                                    });
+                                }
+                                
+                                current = nextHour;
+                                remainingAllocation -= currentHourAllocation; // 更新剩余数量
+                            }
                         }
                         
                         // 配置甘特图
                         var options = {
                             series: [{
-                                name: '工序排程',
                                 data: ganttData
                             }],
                             chart: {
                                 height: 350,
-                                type: 'rangeBar',
-                                zoom: {
-                                    enabled: true,
-                                    type: 'x',
-                                    autoScaleYaxis: false,
-                                    zoomedArea: {
-                                        fill: {
-                                            color: '#90CAF9',
-                                            opacity: 0.4
-                                        },
-                                        stroke: {
-                                            color: '#0D8ABC',
-                                            opacity: 0.7,
-                                            width: 1
-                                        }
-                                    }
-                                },
-                                // 设置缩放和滚动的灵敏度
-                                toolbar: {
-                                    autoSelected: 'zoom', 
-                                    tools: {
-                                        zoom: true,
-                                        zoomin: true,
-                                        zoomout: true,
-                                        pan: true,
-                                        reset: true
-                                    }
-                                }
+                                type: 'rangeBar'
                             },
                             plotOptions: {
                                 bar: {
                                     horizontal: true,
-                                    borderRadius: 4,
-                                    barHeight: '70%',
-                                    // 为不同工序使用不同颜色
-                                    colors: {
-                                        ranges: ganttData.map(item => ({
-                                            from: item.y[0],
-                                            to: item.y[1],
-                                            color: item.fillColor
-                                        }))
-                                    }
+                                    // barHeight: '70%'
                                 }
                             },
                             xaxis: {
-                                type: 'datetime',
-                                tooltip: {
-                                    enabled: true
-                                }
-                            },
-                            yaxis: {
-                                show: true,
-                                tooltip: {
-                                    enabled: false
-                                }
+                                type: 'datetime'
                             },
                             stroke: {
                                 width: 1,
@@ -392,43 +333,24 @@
                             },
                             tooltip: {
                                 x: {
-                                    format: 'yyyy-MM-dd HH:mm'
+                                    format: 'dd/MM/yy HH:mm'
                                 },
                                 y: {
-                                    title: {
-                                        formatter: function(val) {
-                                            return '时间范围: ';
+                                    formatter: function(val) {
+                                        // 显示班次和分配数量
+                                        if (val && val.length >= 2) {
+                                            // 返回时间范围和分配数量
+                                            return '从 ' + new Date(val[0]).toLocaleString() + 
+                                                   ' 到 ' + new Date(val[1]).toLocaleString() + 
+                                                   ', 分配: ' + val.allocated + ' 件';
                                         }
-                                    },
-                                    formatter: function(value, { seriesIndex, dataPointIndex, w }) {
-                                        const data = ganttData[dataPointIndex];
-                                        const start = new Date(value[0]);
-                                        const end = new Date(value[1]);
-                                        const duration = (end - start) / (1000 * 60 * 60); // 小时
-                                        
-                                        return `${start.toLocaleString()} 到 ${end.toLocaleString()} (${duration.toFixed(2)} 小时), 分配: ${data.allocated} 件`;
+                                        return val;
                                     }
                                 }
                             },
                             legend: {
                                 position: 'top',
                                 horizontalAlign: 'left'
-                            },
-                            dataLabels: {
-                                enabled: true,
-                                formatter: function(val, opt) {
-                                    // 只在足够宽的条形上显示标签
-                                    const start = new Date(val[0]);
-                                    const end = new Date(val[1]);
-                                    const duration = (end - start) / (1000 * 60 * 60); // 小时
-                                    if (duration > 0.5) { // 只在超过半小时的条形上显示
-                                        return Math.round(duration) + 'h';
-                                    }
-                                    return '';
-                                },
-                                style: {
-                                    colors: ['#fff']
-                                }
                             }
                         };
                         

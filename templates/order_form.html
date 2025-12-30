@@ -1,11 +1,24 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-    <title>订单创建</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if order %}编辑订单{% else %}创建订单{% endif %} - 生产计划系统</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .form-control:focus, .form-select:focus {
+            box-shadow: 0 0.5rem 1rem rgba(0, 123, 255, 0.25);
+            border-color: #80bdff;
+        }
+    </style>
 </head>
 <body>
     <!-- 导航栏 -->
@@ -13,66 +26,119 @@
         <div class="container">
             <a class="navbar-brand" href="/ui/orders"><i class="bi bi-list-task"></i> 排程规划系统</a>
             <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/ui/capacities"><i class="bi bi-gear"></i> 产能管理</a>
                 {% if is_admin %}
                 <a class="nav-link" href="/ui/logout"><i class="bi bi-box-arrow-right"></i> 登出</a>
                 {% endif %}
             </div>
         </div>
     </nav>
-
-    <div class="container mt-4">
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">创建订单</h1>
-                
+    <div class="container my-4">
+        <div class="card mx-auto" style="max-width: 900px;">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi {% if order %}bi-pencil{% else %}bi-plus-circle{% endif %}"></i> 
+                    {% if order %}编辑订单 #{{ order.id }}{% else %}创建新订单{% endif %}
+                </h4>
+            </div>
+            <div class="card-body">
                 {% if error %}
                 <div class="alert alert-danger" role="alert">
                     {{ error }}
                 </div>
                 {% endif %}
                 
-                <form method="post" action="/ui/orders/create">
+                <form action="{% if order %}/ui/orders/{{ order.id }}/edit{% else %}/ui/orders/create{% endif %}" method="post">
                     <div class="row">
                         <div class="col-md-6">
+                            <h5>基本信息</h5>
+                            <p class="text-muted">填写订单的基本信息和产品规格</p>
+                            
                             <div class="mb-3">
                                 <label for="internal_model" class="form-label">内部型号</label>
-                                <input type="text" class="form-control" id="internal_model" name="internal_model" placeholder="可选">
+                                <input type="text" class="form-control" id="internal_model" name="internal_model" 
+                                       placeholder="可选：输入内部型号标识" 
+                                       value="{{ order.internal_model if order and order.internal_model else '' }}">
+                                <div class="form-text">用于内部识别的型号名称</div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="length" class="form-label">产品长度 (mm)</label>
+                                        <input type="number" step="0.01" class="form-control" id="length" name="length" required
+                                               value="{{ order.length if order else '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="width" class="form-label">产品宽度 (mm)</label>
+                                        <input type="number" step="0.01" class="form-control" id="width" name="width" required
+                                               value="{{ order.width if order else '' }}">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="original_length" class="form-label">原玻长度 (mm)</label>
+                                        <input type="number" step="0.01" class="form-control" id="original_length" name="original_length" 
+                                               placeholder="可选：输入原玻长度"
+                                               value="{{ order.original_length if order and order.original_length else '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="original_width" class="form-label">原玻宽度 (mm)</label>
+                                        <input type="number" step="0.01" class="form-control" id="original_width" name="original_width" 
+                                               placeholder="可选：输入原玻宽度"
+                                               value="{{ order.original_width if order and order.original_width else '' }}">
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="mb-3">
-                                <label for="length" class="form-label">产品长度 (mm)</label>
-                                <input type="number" step="0.1" class="form-control" id="length" name="length" required>
+                                <label for="thickness" class="form-label">板厚 (micron)</label>
+                                <input type="number" step="0.01" class="form-control" id="thickness" name="thickness" 
+                                       placeholder="可选：输入板厚，单位为微米"
+                                       value="{{ order.thickness if order and order.thickness else '' }}">
+                                <div class="form-text">单位为微米（micron）</div>
                             </div>
                             
                             <div class="mb-3">
-                                <label for="width" class="form-label">产品宽度 (mm)</label>
-                                <input type="number" step="0.1" class="form-control" id="width" name="width" required>
+                                <label for="quantity" class="form-label">出货数量 (件)</label>
+                                <input type="number" class="form-control" id="quantity" name="quantity" required
+                                       value="{{ order.quantity if order else '' }}">
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="estimated_yield" class="form-label">预估良率 (%)</label>
+                                        <input type="number" step="0.01" min="0" max="100" class="form-control" 
+                                               id="estimated_yield" name="estimated_yield" 
+                                               placeholder="例如: 95.5"
+                                               value="{{ order.estimated_yield if order and order.estimated_yield else '' }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="due_datetime" class="form-label">最晚交期</label>
+                                        <input type="datetime-local" class="form-control" id="due_datetime" name="due_datetime" required
+                                               value="{{ order.due_datetime.strftime('%Y-%m-%dT%H:%M') if order and order.due_datetime else '' }}">
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="mb-3">
-                                <label for="quantity" class="form-label">出货数量</label>
-                                <input type="number" class="form-control" id="quantity" name="quantity" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="estimated_yield" class="form-label">预估良率 (%)</label>
-                                <input type="number" step="0.1" class="form-control" id="estimated_yield" name="estimated_yield" placeholder="例如: 98.5">
-                                <div class="form-text">用于计算投入量，留空则按100%计算</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="due_datetime" class="form-label">最晚交期</label>
-                                <input type="datetime-local" class="form-control" id="due_datetime" name="due_datetime" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="workshop" class="form-label">选择车间</label>
-                                <select class="form-select" id="workshop" name="workshop" required>
-                                    <option value="" disabled selected>请选择车间</option>
-                                    <option value="UTG1车间">UTG1车间</option>
-                                    <option value="UTG2车间">UTG2车间</option>
-                                    <option value="UTG3车间">UTG3车间</option>
-                                    <option value="中试线">中试线</option>
+                                <label for="workshop" class="form-label">生产车间</label>
+                                <select class="form-select" id="workshop" name="workshop">
+                                    <option value="">请选择车间...</option>
+                                    <option value="UTG1车间" {% if order and order.workshop == 'UTG1车间' %}selected{% endif %}>UTG1车间</option>
+                                    <option value="UTG2车间" {% if order and order.workshop == 'UTG2车间' %}selected{% endif %}>UTG2车间</option>
+                                    <option value="UTG3车间" {% if order and order.workshop == 'UTG3车间' %}selected{% endif %}>UTG3车间</option>
+                                    <option value="中试线" {% if order and order.workshop == '中试线' %}selected{% endif %}>中试线</option>
                                 </select>
                             </div>
                         </div>
@@ -84,8 +150,10 @@
                             {% for op in operations %}
                             <div class="mb-3">
                                 <label for="op_{{ op.id }}" class="form-label">{{ op.name }}</label>
+                                {% set order_op = order_operations | selectattr('operation_id', 'equalto', op.id) | first %}
                                 <input type="number" class="form-control" id="op_{{ op.id }}" name="op_{{ op.id }}" 
-                                       placeholder="每小时产能 (件)，默认: {{ op.default_pieces_per_hour if op.default_pieces_per_hour else '未设置' }}">
+                                       placeholder="每小时产能 (件)，默认: {{ op.default_pieces_per_hour if op.default_pieces_per_hour else '未设置' }}"
+                                       value="{{ order_op.pieces_per_hour if order_op and order_op.pieces_per_hour else '' }}">
                             </div>
                             {% endfor %}
                             
@@ -100,7 +168,8 @@
                     
                     <div class="mt-4">
                         <button type="submit" class="btn btn-success" {% if not operations %}disabled{% endif %}>
-                            <i class="bi bi-plus-circle"></i> 创建订单并计算排程
+                            <i class="bi {% if order %}bi-pencil{% else %}bi-plus-circle{% endif %}"></i> 
+                            {% if order %}更新订单{% else %}创建订单并计算排程{% endif %}
                         </button>
                         <a href="/ui/orders" class="btn btn-outline-secondary">返回订单列表</a>
                     </div>

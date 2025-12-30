@@ -10,9 +10,9 @@ ROOT = os.path.dirname(os.path.dirname(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# Import app settings and metadata
-from app.config import settings
-from app.db import Base
+# Import app settings and metadata - fix import path
+from app.config.settings import settings
+from app.models.base import Base
 
 # this is the Alembic Config object, which provides access to the values within the .ini file.
 from alembic import context
@@ -24,7 +24,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set SQLAlchemy URL from app config
-config.set_main_option('sqlalchemy.url', settings.database_url)
+config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
 
 # target_metadata for 'autogenerate'
 target_metadata = Base.metadata

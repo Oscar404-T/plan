@@ -5,18 +5,9 @@
 
 from .base import Base
 from .user import User
-from .admin import Admin
-from .capacity import Capacity
-from .operation import Operation
 from .order import Order
-from .order_operation import OrderOperation
+from .operation import Operation
+from .capacity import Capacity
+from .workshop_capacity import WorkshopCapacity
 
-__all__ = [
-    "Base",
-    "User",
-    "Admin",
-    "Capacity",
-    "Operation",
-    "Order",
-    "OrderOperation",
-]
+__all__ = ["User", "Order", "Operation", "Capacity", "WorkshopCapacity"]

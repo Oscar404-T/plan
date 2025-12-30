@@ -14,6 +14,8 @@ class Order(Base):
     # 产品尺寸（单位：mm），用于根据公式计算物料尺寸
     length = Column(Float, nullable=False)
     width = Column(Float, nullable=False)
+    # 板厚（单位：微米）
+    thickness = Column(Float, nullable=True)
     # 计算得到的尺寸（单位：inch），由 sqrt(length^2 + width^2) / 25.4 得出
     size = Column(Float, nullable=True)
     # 出货数量
@@ -24,4 +26,7 @@ class Order(Base):
     created_at = Column(DateTime, server_default=func.now())
     # 车间信息
     workshop = Column(String(255), nullable=True)
+    # 原玻尺寸（单位：mm）
+    original_length = Column(Float, nullable=True)  # 原玻长
+    original_width = Column(Float, nullable=True)   # 原玻宽
     # 后续可扩展状态等字段

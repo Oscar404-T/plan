@@ -7,7 +7,7 @@
 
 from sqlalchemy.orm import Session
 from .. import models, schemas
-from .crud import list_operations  # 导入list_operations函数
+from .crud import list_operations, create_operation  # 导入list_operations和create_operation函数
 from datetime import datetime
 import math
 
@@ -22,11 +22,14 @@ def create_order(db: Session, order: schemas.OrderCreate):
         internal_model=getattr(order, 'internal_model', None),
         length=order.length,
         width=order.width,
+        thickness=order.thickness,
         size=size_val,
         quantity=order.quantity,
         estimated_yield=getattr(order, 'estimated_yield', None),
         due_datetime=order.due_datetime,
         workshop=getattr(order, 'workshop', None),
+        original_length=getattr(order, 'original_length', None),
+        original_width=getattr(order, 'original_width', None),
     )
     db.add(db_order)
     db.commit()
@@ -60,11 +63,39 @@ def get_order(db: Session, order_id: int):
 
 
 def get_order_operations(db: Session, order_id: int):
-    return db.query(models.OrderOperation).filter(models.OrderOperation.order_id == order_id).order_by(models.OrderOperation.seq).all()
+    """获取订单的工序列表"""
+    from ..models.order_operation import OrderOperation
+    return db.query(OrderOperation).filter(OrderOperation.order_id == order_id).order_by(OrderOperation.seq).all()
+
+
+def get_orders(db: Session, skip: int = 0, limit: int = 100):
+    """获取订单列表"""
+    return db.query(models.Order).offset(skip).limit(limit).all()
+
+
+def get_order_by_id(db: Session, order_id: int):
+    """根据ID获取订单"""
+    return db.query(models.Order).filter(models.Order.id == order_id).first()
 
 
 def list_orders(db: Session):
+    """获取所有订单，按创建时间倒序"""
     return db.query(models.Order).order_by(models.Order.created_at.desc()).all()
+
+
+def update_order(db: Session, order_id: int, order_update: schemas.OrderUpdate):
+    """更新订单"""
+    db_order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not db_order:
+        return None
+
+    update_data = order_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_order, field, value)
+
+    db.commit()
+    db.refresh(db_order)
+    return db_order
 
 
 def delete_order(db: Session, order_id: int):

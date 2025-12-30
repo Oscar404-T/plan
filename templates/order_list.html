@@ -15,6 +15,14 @@
             background-color: #c82333;
             color: white;
         }
+        .edit-btn {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .edit-btn:hover {
+            background-color: #e0a800;
+            color: #212529;
+        }
     </style>
 </head>
 <body>
@@ -23,6 +31,7 @@
         <div class="container">
             <a class="navbar-brand" href="/ui/orders"><i class="bi bi-list-task"></i> 排程规划系统</a>
             <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/ui/capacities"><i class="bi bi-gear"></i> 产能管理</a>
                 {% if is_admin %}
                 <a class="nav-link" href="/ui/logout"><i class="bi bi-box-arrow-right"></i> 登出</a>
                 {% endif %}
@@ -78,6 +87,9 @@
                                 </td>
                                 <td>{{ order.created_at.strftime('%m-%d %H:%M') if order.created_at else '-' }}</td>
                                 <td>
+                                    <a href="/ui/orders/{{ order.id }}/edit" class="btn edit-btn btn-sm me-2">
+                                        <i class="bi bi-pencil"></i> 编辑
+                                    </a>
                                     <a href="/ui/orders/{{ order.id }}/schedule" class="btn btn-outline-primary btn-sm me-2">
                                         <i class="bi bi-eye"></i> 查看排程
                                     </a>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产能管理 - 生产计划系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            border: 1px solid rgba(0, 0, 0, 0.125);
+        }
+        .form-control:focus, .form-select:focus {
+            box-shadow: 0 0.5rem 1rem rgba(0, 123, 255, 0.25);
+            border-color: #80bdff;
+        }
+        .capacity-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container my-4">
+        <div class="card mx-auto">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-gear"></i> 产能管理</h4>
+            </div>
+            <div class="card-body">
+                <form action="/ui/capacities/create" method="post">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>产能信息</h5>
+                            <p class="text-muted">填写车间、工序和机台产能信息</p>
+                            
+                            <div class="mb-3">
+                                <label for="workshop" class="form-label">生产车间</label>
+                                <select class="form-select" id="workshop" name="workshop" required>
+                                    <option value="">请选择车间...</option>
+                                    <option value="UTG1车间">UTG1车间</option>
+                                    <option value="UTG2车间">UTG2车间</option>
+                                    <option value="UTG3车间">UTG3车间</option>
+                                    <option value="中试线">中试线</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="operation_id" class="form-label">工序</label>
+                                <select class="form-select" id="operation_id" name="operation_id" required>
+                                    <option value="">请选择工序...</option>
+                                    {% for op in operations %}
+                                    <option value="{{ op.id }}">{{ op.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="machine_name" class="form-label">机台名称</label>
+                                <input type="text" class="form-control" id="machine_name" name="machine_name" required>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="machine_count" class="form-label">机台数量</label>
+                                        <input type="number" class="form-control" id="machine_count" name="machine_count" min="1" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="cycle_time" class="form-label">生产节拍 (秒/件)</label>
+                                        <input type="number" step="0.01" class="form-control" id="cycle_time" name="cycle_time" min="0.01" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="capacity_per_hour" class="form-label">每小时产能 (件/小时)</label>
+                                <input type="number" step="0.01" class="form-control" id="capacity_per_hour" name="capacity_per_hour" min="0" required>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <h5>当前产能列表</h5>
+                            <p class="text-muted">已配置的产能信息</p>
+                            
+                            <div class="capacity-list">
+                                {% if capacities %}
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>车间</th>
+                                            <th>工序</th>
+                                            <th>机台名称</th>
+                                            <th>产能(件/小时)</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for cap in capacities %}
+                                        <tr>
+                                            <td>{{ cap.workshop }}</td>
+                                            <td>{{ cap.operation.name if cap.operation else 'N/A' }}</td>
+                                            <td>{{ cap.machine_name }}</td>
+                                            <td>{{ cap.capacity_per_hour }}</td>
+                                            <td class="action-buttons">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" 
+                                                        onclick="editCapacity({{ cap.id }}, '{{ cap.workshop }}', {{ cap.operation_id }}, '{{ cap.machine_name }}', {{ cap.machine_count }}, {{ cap.cycle_time }}, {{ cap.capacity_per_hour }})">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                        onclick="deleteCapacity({{ cap.id }}, '{{ cap.workshop }} - {{ cap.machine_name }}')">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                                {% else %}
+                                <p class="text-muted">暂无产能数据</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-plus-circle"></i> 添加产能
+                        </button>
+                        <a href="/ui/orders" class="btn btn-outline-secondary">返回订单列表</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑产能模态框 -->
+    <div class="modal fade" id="editCapacityModal" tabindex="-1" aria-labelledby="editCapacityModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editCapacityModalLabel">编辑产能</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="editCapacityForm" method="post">
+                    <div class="modal-body">
+                        <input type="hidden" id="edit_id" name="id">
+                        <div class="mb-3">
+                            <label for="edit_workshop" class="form-label">生产车间</label>
+                            <select class="form-select" id="edit_workshop" name="workshop" required>
+                                <option value="UTG1车间">UTG1车间</option>
+                                <option value="UTG2车间">UTG2车间</option>
+                                <option value="UTG3车间">UTG3车间</option>
+                                <option value="中试线">中试线</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="edit_operation_id" class="form-label">工序</label>
+                            <select class="form-select" id="edit_operation_id" name="operation_id" required>
+                                {% for op in operations %}
+                                <option value="{{ op.id }}">{{ op.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="edit_machine_name" class="form-label">机台名称</label>
+                            <input type="text" class="form-control" id="edit_machine_name" name="machine_name" required>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="edit_machine_count" class="form-label">机台数量</label>
+                                    <input type="number" class="form-control" id="edit_machine_count" name="machine_count" min="1" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="edit_cycle_time" class="form-label">生产节拍 (秒/件)</label>
+                                    <input type="number" step="0.01" class="form-control" id="edit_cycle_time" name="cycle_time" min="0.01" required>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="edit_capacity_per_hour" class="form-label">每小时产能 (件/小时)</label>
+                            <input type="number" step="0.01" class="form-control" id="edit_capacity_per_hour" name="capacity_per_hour" min="0" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary">保存更改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 编辑产能函数
+        function editCapacity(id, workshop, operationId, machineName, machineCount, cycleTime, capacityPerHour) {
+            document.getElementById('edit_id').value = id;
+            document.getElementById('edit_workshop').value = workshop;
+            document.getElementById('edit_operation_id').value = operationId;
+            document.getElementById('edit_machine_name').value = machineName;
+            document.getElementById('edit_machine_count').value = machineCount;
+            document.getElementById('edit_cycle_time').value = cycleTime;
+            document.getElementById('edit_capacity_per_hour').value = capacityPerHour;
+            
+            // 显示模态框
+            var modal = new bootstrap.Modal(document.getElementById('editCapacityModal'));
+            modal.show();
+        }
+
+        // 删除产能函数
+        function deleteCapacity(id, name) {
+            if (confirm('确定要删除产能记录 "' + name + '" 吗？此操作不可撤销。')) {
+                fetch('/api/v1/workshop-capacities/' + id, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        alert('产能记录删除成功！');
+                        location.reload(); // 刷新页面以更新列表
+                    } else {
+                        response.json().then(data => {
+                            alert('删除失败：' + (data.detail || '未知错误'));
+                        }).catch(() => {
+                            alert('删除失败，请重试。');
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('删除时发生错误，请重试。');
+                });
+            }
+        }
+
+        // 处理编辑表单提交
+        document.getElementById('editCapacityForm').addEventListener('submit', function(e) {
+            e.preventDefault(); // 阻止表单默认提交
+            
+            const formData = new FormData(this);
+            const id = formData.get('id');
+            
+            // 构建数据对象
+            const data = {
+                workshop: formData.get('workshop'),
+                operation_id: parseInt(formData.get('operation_id')),
+                machine_name: formData.get('machine_name'),
+                machine_count: parseInt(formData.get('machine_count')),
+                cycle_time: parseFloat(formData.get('cycle_time')),
+                capacity_per_hour: parseFloat(formData.get('capacity_per_hour'))
+            };
+            
+            // 发送更新请求
+            fetch('/api/v1/workshop-capacities/' + id, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert('产能记录更新成功！');
+                    location.reload(); // 刷新页面以更新列表
+                } else {
+                    response.json().then(data => {
+                        alert('更新失败：' + (data.detail || '未知错误'));
+                    }).catch(() => {
+                        alert('更新失败，请重试。');
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('更新时发生错误，请重试。');
+            });
+        });
+    </script>
+</body>
+</html>

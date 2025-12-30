@@ -87,11 +87,14 @@ class OrderBase(BaseModel):
     internal_model: Optional[str] = None  # 内部型号
     length: float  # 产品长（mm）
     width: float   # 产品宽（mm）
+    thickness: float   # 板厚（micron）
     size: Optional[float] = None  # 计算得到的尺寸（inch），公式：sqrt(length^2 + width^2) / 25.4
     quantity: int  # 出货数量
     estimated_yield: Optional[float] = None  # 预估良率（%）
     due_datetime: datetime  # 最晚交期（本地时间）
     workshop: Optional[str] = None  # 车间
+    original_length: Optional[float] = None  # 原玻长（mm）
+    original_width: Optional[float] = None   # 原玻宽（mm）
 
 
 class OrderCreate(OrderBase):
@@ -135,23 +138,33 @@ class ScheduleResponse(BaseModel):
 OrderCreate.update_forward_refs()
 
 
+from .user import UserCreate, UserRead, UserLogin
+from .order import OrderCreate, OrderUpdate, OrderRead
+from .operation import OperationCreate, OperationRead, OperationUpdate
+from .capacity import CapacityCreate, CapacityUpdate, CapacityRead, CapacityWithOperation
+from .workshop_capacity import (
+    WorkshopCapacityBase,
+    WorkshopCapacityCreate,
+    WorkshopCapacityUpdate,
+    WorkshopCapacityRead
+)
+
 __all__ = [
-    "UserBase",
-    "UserCreate",
-    "UserRead",
-    "CapacityBase",
-    "CapacityCreate",
-    "CapacityRead",
-    "OperationBase",
-    "OperationCreate",
-    "OperationRead",
-    "OrderBase",
-    "OrderCreate",
+    "UserCreate", 
+    "UserRead", 
+    "UserLogin",
+    "OrderCreate", 
+    "OrderUpdate", 
     "OrderRead",
-    "OrderOperationBase",
-    "OrderOperationCreate",
-    "OrderOperationRead",
-    "ScheduleAllocation",
-    "ScheduleResponse",
-    "ShiftEnum",
+    "OperationCreate", 
+    "OperationRead", 
+    "OperationUpdate",
+    "CapacityCreate",
+    "CapacityUpdate",
+    "CapacityRead",
+    "CapacityWithOperation",
+    "WorkshopCapacityBase",
+    "WorkshopCapacityCreate", 
+    "WorkshopCapacityUpdate",
+    "WorkshopCapacityRead"
 ]

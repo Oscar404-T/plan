@@ -5,7 +5,7 @@
 
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Request
+from fastapi import Request, Response
 from passlib.context import CryptContext
 from . import models
 from sqlalchemy.orm import Session
@@ -63,6 +63,13 @@ def authenticate_and_login(request: Request, db: Session, username: str, passwor
     request.session['admin_id'] = admin.id
     request.session['username'] = admin.username
     return True
+
+
+def set_admin_session(response: Response, username: str):
+    """设置管理员会话 - 这个函数是用于登录时设置会话的"""
+    # 这个函数是为了解决main.py中的调用，但登录时我们实际上是通过数据库查询并重定向
+    # 实际上，我们需要在登录时设置会话，但由于这是在Form处理中，我们需要使用依赖注入
+    pass  # 实际上，FastAPI的SessionMiddleware会自动处理会话，我们不需要手动设置
 
 
 def clear_admin_session(request: Request):

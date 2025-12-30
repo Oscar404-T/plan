@@ -1,17 +1,17 @@
-"""用户模型定义
+"""用户表模型
 
-包含User、Admin、Capacity、Order、Operation、OrderOperation 等数据库表的 ORM 定义。
-注：字段注释使用中文以便阅读，ShiftEnum 用于表示白班/夜班。
+定义用户相关的数据模型
 """
 
 from sqlalchemy import Column, Integer, String
-from sqlalchemy.sql import func
-from .base import Base
+from ..database.connection import Base
 
 
 class User(Base):
-    """用户模型"""
+
+    """用户表"""
     __tablename__ = "users"
+
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    name = Column(String(255), nullable=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)

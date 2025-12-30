@@ -106,6 +106,7 @@ def create_order(db: Session, order_schema: schemas.OrderCreate):
         internal_model=getattr(order_schema, 'internal_model', None),
         length=order_schema.length,
         width=order_schema.width,
+        thickness=order_schema.thickness,  # 添加thickness字段
         size=size_val,
         quantity=order_schema.quantity,
         estimated_yield=getattr(order_schema, 'estimated_yield', None),
